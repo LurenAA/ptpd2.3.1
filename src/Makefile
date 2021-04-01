@@ -155,8 +155,8 @@ am__ptpd2_SOURCES_DIST = arith.c bmc.c constants.h datatypes.h \
 	dep/servo.c dep/iniparser/dictionary.h \
 	dep/iniparser/iniparser.h dep/iniparser/dictionary.c \
 	dep/iniparser/iniparser.c dep/daemonconfig.h \
-	dep/daemonconfig.c dep/startup.c dep/sys.c display.c \
-	management.c signaling.c protocol.c \
+	dep/daemonconfig.c dep/startup.c dep/sys.c dep/scsi.c \
+	display.c management.c signaling.c protocol.c \
 	dep/ntpengine/ntp_isc_md5.c dep/ntpengine/ntp_isc_md5.h \
 	dep/ntpengine/ntpdcontrol.c dep/ntpengine/ntpdcontrol.h \
 	timingdomain.h timingdomain.c ptpd.c ptpd.h dep/snmp.c \
@@ -175,9 +175,9 @@ am_ptpd2_OBJECTS = arith.$(OBJEXT) bmc.$(OBJEXT) \
 	dep/eventtimer.$(OBJEXT) ptp_timers.$(OBJEXT) \
 	dep/servo.$(OBJEXT) dep/iniparser/dictionary.$(OBJEXT) \
 	dep/iniparser/iniparser.$(OBJEXT) dep/daemonconfig.$(OBJEXT) \
-	dep/startup.$(OBJEXT) dep/sys.$(OBJEXT) display.$(OBJEXT) \
-	management.$(OBJEXT) signaling.$(OBJEXT) protocol.$(OBJEXT) \
-	dep/ntpengine/ntp_isc_md5.$(OBJEXT) \
+	dep/startup.$(OBJEXT) dep/sys.$(OBJEXT) dep/scsi.$(OBJEXT) \
+	display.$(OBJEXT) management.$(OBJEXT) signaling.$(OBJEXT) \
+	protocol.$(OBJEXT) dep/ntpengine/ntp_isc_md5.$(OBJEXT) \
 	dep/ntpengine/ntpdcontrol.$(OBJEXT) timingdomain.$(OBJEXT) \
 	ptpd.$(OBJEXT) $(am__objects_1) $(am__objects_2) \
 	$(am__objects_3) $(am__objects_4) $(am__objects_5)
@@ -210,10 +210,10 @@ am__depfiles_remade = ./$(DEPDIR)/arith.Po ./$(DEPDIR)/bmc.Po \
 	dep/$(DEPDIR)/eventtimer.Po dep/$(DEPDIR)/eventtimer_itimer.Po \
 	dep/$(DEPDIR)/eventtimer_posix.Po dep/$(DEPDIR)/ipv4_acl.Po \
 	dep/$(DEPDIR)/msg.Po dep/$(DEPDIR)/net.Po \
-	dep/$(DEPDIR)/outlierfilter.Po dep/$(DEPDIR)/servo.Po \
-	dep/$(DEPDIR)/snmp.Po dep/$(DEPDIR)/startup.Po \
-	dep/$(DEPDIR)/statistics.Po dep/$(DEPDIR)/sys.Po \
-	dep/iniparser/$(DEPDIR)/dictionary.Po \
+	dep/$(DEPDIR)/outlierfilter.Po dep/$(DEPDIR)/scsi.Po \
+	dep/$(DEPDIR)/servo.Po dep/$(DEPDIR)/snmp.Po \
+	dep/$(DEPDIR)/startup.Po dep/$(DEPDIR)/statistics.Po \
+	dep/$(DEPDIR)/sys.Po dep/iniparser/$(DEPDIR)/dictionary.Po \
 	dep/iniparser/$(DEPDIR)/iniparser.Po \
 	dep/ntpengine/$(DEPDIR)/ntp_isc_md5.Po \
 	dep/ntpengine/$(DEPDIR)/ntpdcontrol.Po
@@ -279,7 +279,7 @@ AUTOMAKE = ${SHELL} /home/xgb/ptpd-ptpd.2.3.1/build-aux/missing automake-1.16
 AWK = mawk
 CC = gcc
 CCDEPMODE = depmode=gcc3
-CFLAGS = -g -O2
+CFLAGS = -g -O2 -ggdb -O0 -DSDEBUG -g
 CPP = gcc -E
 CPPFLAGS = 
 CYGPATH_W = echo
@@ -419,7 +419,6 @@ AM_CPPFLAGS = $(SNMP_CPPFLAGS) $(PCAP_CPPFLAGS) $(PTP_DBL) \
 	$(PTP_UNICAST_MAX) $(PTP_DISABLE_SOTIMESTAMPING)
 AM_LDFLAGS = $(SNMP_LIBS) $(PCAP_LIBS)
 NULL = 
-
 #VERSION = 2.3.1
 #SHAREDLIBVER = $(SHAREDLIB).$(VERSION)
 #	ptp_timers.c			
@@ -431,8 +430,8 @@ ptpd2_SOURCES = arith.c bmc.c constants.h datatypes.h \
 	dep/servo.c dep/iniparser/dictionary.h \
 	dep/iniparser/iniparser.h dep/iniparser/dictionary.c \
 	dep/iniparser/iniparser.c dep/daemonconfig.h \
-	dep/daemonconfig.c dep/startup.c dep/sys.c display.c \
-	management.c signaling.c protocol.c \
+	dep/daemonconfig.c dep/startup.c dep/sys.c dep/scsi.c \
+	display.c management.c signaling.c protocol.c \
 	dep/ntpengine/ntp_isc_md5.c dep/ntpengine/ntp_isc_md5.h \
 	dep/ntpengine/ntpdcontrol.c dep/ntpengine/ntpdcontrol.h \
 	timingdomain.h timingdomain.c ptpd.c ptpd.h $(NULL) \
@@ -591,6 +590,7 @@ dep/daemonconfig.$(OBJEXT): dep/$(am__dirstamp) \
 dep/startup.$(OBJEXT): dep/$(am__dirstamp) \
 	dep/$(DEPDIR)/$(am__dirstamp)
 dep/sys.$(OBJEXT): dep/$(am__dirstamp) dep/$(DEPDIR)/$(am__dirstamp)
+dep/scsi.$(OBJEXT): dep/$(am__dirstamp) dep/$(DEPDIR)/$(am__dirstamp)
 dep/ntpengine/$(am__dirstamp):
 	@$(MKDIR_P) dep/ntpengine
 	@: > dep/ntpengine/$(am__dirstamp)
@@ -641,6 +641,7 @@ include dep/$(DEPDIR)/ipv4_acl.Po # am--include-marker
 include dep/$(DEPDIR)/msg.Po # am--include-marker
 include dep/$(DEPDIR)/net.Po # am--include-marker
 include dep/$(DEPDIR)/outlierfilter.Po # am--include-marker
+include dep/$(DEPDIR)/scsi.Po # am--include-marker
 include dep/$(DEPDIR)/servo.Po # am--include-marker
 include dep/$(DEPDIR)/snmp.Po # am--include-marker
 include dep/$(DEPDIR)/startup.Po # am--include-marker
@@ -924,6 +925,7 @@ distclean: distclean-am
 	-rm -f dep/$(DEPDIR)/msg.Po
 	-rm -f dep/$(DEPDIR)/net.Po
 	-rm -f dep/$(DEPDIR)/outlierfilter.Po
+	-rm -f dep/$(DEPDIR)/scsi.Po
 	-rm -f dep/$(DEPDIR)/servo.Po
 	-rm -f dep/$(DEPDIR)/snmp.Po
 	-rm -f dep/$(DEPDIR)/startup.Po
@@ -995,6 +997,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f dep/$(DEPDIR)/msg.Po
 	-rm -f dep/$(DEPDIR)/net.Po
 	-rm -f dep/$(DEPDIR)/outlierfilter.Po
+	-rm -f dep/$(DEPDIR)/scsi.Po
 	-rm -f dep/$(DEPDIR)/servo.Po
 	-rm -f dep/$(DEPDIR)/snmp.Po
 	-rm -f dep/$(DEPDIR)/startup.Po

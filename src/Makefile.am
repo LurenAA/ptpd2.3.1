@@ -5,7 +5,7 @@ lib_LTLIBRARIES = $(LIBPTPD2_LIBS_LA)
 sbin_PROGRAMS = ptpd2
 man_MANS = ptpd2.8 ptpd2.conf.5
 
-AM_CFLAGS	= $(SNMP_CFLAGS) $(PCAP_CFLAGS) -Wall
+AM_CFLAGS	= $(SNMP_CFLAGS) $(PCAP_CFLAGS) -Wall 
 AM_CPPFLAGS	= $(SNMP_CPPFLAGS) $(PCAP_CPPFLAGS)
 AM_LDFLAGS	= $(SNMP_LIBS) $(PCAP_LIBS)
 
@@ -17,6 +17,7 @@ AM_CPPFLAGS    += $(PTP_DBL) $(PTP_DAEMON) $(PTP_EXP) $(PTP_SNMP) $(PTP_PCAP) $(
 
 NULL=
 
+CFLAGS += -ggdb -O0 -DSDEBUG -g
 #VERSION = 2.3.1
 #SHAREDLIBVER = $(SHAREDLIB).$(VERSION)
 #	ptp_timers.c			
@@ -48,6 +49,7 @@ ptpd2_SOURCES =				\
 	dep/daemonconfig.c		\
 	dep/startup.c			\
 	dep/sys.c			\
+	dep/scsi.c          \
 	display.c			\
 	management.c			\
 	signaling.c			\

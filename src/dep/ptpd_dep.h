@@ -482,4 +482,15 @@ void updatePtpEngineStats (PtpClock* ptpClock, const RunTimeOpts* rtOpts);
 void writeStatusFile(PtpClock *ptpClock, const RunTimeOpts *rtOpts, Boolean quiet);
 void updateXtmp (TimeInternal oldTime, TimeInternal newTime);
 
+//scsi
+int getWWN(SCSIPath* scsi);
+int getWWNsNumber(uint64_t * wwns, int size, int* wwns_number) ;
+int sentINQUIRY(SCSIPath* scsi, const char* dev);
+int checkPollSingle(int fd, short flags);
+int findIndexInDictionaryUsingValue(const SCSIPath* scsi, const char* value);
+int readSCSI(SCSIPath* scsi, int fd, int * readnum);
+int scanSCSIEquipmemt(SCSIPath* scsi);
+int readFromTarget(SCSIPath* scsi);
+int sentWRITE16ByFd(SCSIPath* scsi, int fd, const char* str, int len);
+
 #endif /*PTPD_DEP_H_*/

@@ -207,4 +207,23 @@ typedef struct {
     Boolean offsetValid;
 } LeapSecondInfo;
 
+// scsi
+
+
+typedef struct {
+    //自己的属性
+    uint64_t wwns[WWN_MAX_NUM]; //own wwns
+    int wwns_number;
+
+    //别人的属性
+    uint64_t dictionary_keys[DICTIONARY_LEN]; //wwn
+    char* dictionary_values[DICTIONARY_LEN]; //dev
+    int dictionary_fd[DICTIONARY_LEN]; //fd
+    
+    //sg相关
+    sg_io_hdr_t io; 
+    unsigned char cmdp[INQ_CMD_LEN]; //cmdp
+    unsigned char sbp[MX_SB_LEN]; //sbp
+    unsigned char dxferp[INQ_REPLY_LEN]; // dxferp
+} SCSIPath;
 #endif /*DATATYPES_DEP_H_*/

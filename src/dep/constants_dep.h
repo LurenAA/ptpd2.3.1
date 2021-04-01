@@ -231,4 +231,63 @@ enum {
 
 #define MAXTIMESTR 32
 
+//scsi
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <dirent.h>
+#include <errno.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <scsi/scsi.h>
+#include <scsi/sg.h>
+#include <scsi/scsi_ioctl.h>
+#include <poll.h>
+#include <stdint.h>
+
+#define WWN_MAX_NUM 12
+#define HOST_MAX_NUM 15
+#define MAX_FILENAME_LENGTH 256
+#define WWNS_LEN 8
+#define FC_HOST_LOCATION "/sys/class/fc_host"
+#define FC_NODE_NAME "/node_name"
+#define FC_STATE_NAME "/port_state"
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
+#define PORT_STATE_LEN 16
+#define DICTIONARY_LEN 32
+#define DEFAULT_TIME_OUT 60000
+#define DEV_PREFIX "/dev/"
+#define HEX 16
+#define WWN_BEGIN 24
+#define WWN_INQ_ID "ptpinq"
+
+#define INQ_CMD_LEN 16
+#define MX_SB_LEN 255
+#define INQ_REPLY_LEN 1024
+ 
+#ifdef SDEBUG
+#define PRINTLN(format, args...)  \
+do {  \
+    printf(format "\n", ## args);\
+} while(0) 
+#else 
+#define PRINTLN(format, args...) 
+#endif
+
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)  
+//__FUNCTION__ is a variable in gcc 
+#define PRINTLNDEBUGHELP(x ,y , z,format, args...)  \
+    PRINTLN(x " " STR(y) " %s  :" format, z ,##args)
+
+#define PRINTLNDEBUG(format, args...)                \
+    PRINTLNDEBUGHELP(__FILE__, __LINE__, __FUNCTION__, format, ## args)
+
+#define DDF(res) PRINTLNDEBUG("%s", strerror(res))  //Default debug function
+
 #endif /*CONSTANTS_DEP_H_*/
