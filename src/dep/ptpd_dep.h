@@ -482,15 +482,32 @@ void updatePtpEngineStats (PtpClock* ptpClock, const RunTimeOpts* rtOpts);
 void writeStatusFile(PtpClock *ptpClock, const RunTimeOpts *rtOpts, Boolean quiet);
 void updateXtmp (TimeInternal oldTime, TimeInternal newTime);
 
-//scsi
-int getWWN(SCSIPath* scsi);
-int getWWNsNumber(uint64_t * wwns, int size, int* wwns_number) ;
-int sentINQUIRY(SCSIPath* scsi, const char* dev);
-int checkPollSingle(int fd, short flags);
-int findIndexInDictionaryUsingValue(const SCSIPath* scsi, const char* value);
-int readSCSI(SCSIPath* scsi, int fd, int * readnum);
-int scanSCSIEquipmemt(SCSIPath* scsi);
-int readFromTarget(SCSIPath* scsi);
-int sentWRITE16ByFd(SCSIPath* scsi, int fd, const char* str, int len);
+#ifdef SDEBUG
+#define PRINTLN(format, args...)  \
+do {  \
+    printf(format "\n", ## args);\
+} while(0) 
+#else 
+#define PRINTLN(format, args...) 
+#endif
 
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)  
+//__FUNCTION__ is a variable in gcc 
+#define PRINTLNDEBUGHELP(x ,y , z,format, args...)  \
+    PRINTLN(x " " STR(y) " %s  :" format, z ,##args)
+
+#define PRINTLNDEBUG(format, args...)                \
+    PRINTLNDEBUGHELP(__FILE__, __LINE__, __FUNCTION__, format, ## args)
+
+#define DDF(res) PRINTLNDEBUG("%s", strerror(res))  //Default debug function
+
+#define DBUGDFHELPER(s,ste, file, line, func) \
+  DBG(file " " STR(line) " " func " : " s, ste)
+#define DBUGDF(res)  \
+  DBUGDFHELPER("%s", strerror(res),__FILE__, __LINE__, __FUNCTION__);
+
+Boolean testSCSIInterface(char * ifaceName, const RunTimeOpts* rtOpts);
+Boolean
+scsiRefresh(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock);
 #endif /*PTPD_DEP_H_*/

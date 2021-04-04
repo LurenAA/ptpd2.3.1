@@ -53,6 +53,8 @@
 
 #include "ptpd.h"
 
+Boolean scsiShutdown(SCSIPath* scsi);
+Boolean SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock);
 Boolean doInit(RunTimeOpts*,PtpClock*);
 static void doState(const RunTimeOpts*,PtpClock*);
 
@@ -478,13 +480,19 @@ toState(UInteger8 state, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		ptpClock->logMinDelayReqInterval = rtOpts->initial_delayreq;
 
 		/* force a IGMP refresh per reset */
-		if (rtOpts->ipMode != IPMODE_UNICAST && rtOpts->do_IGMP_refresh && rtOpts->transport != IEEE_802_3) {
+		if (rtOpts->transport != SCSI_FC &&rtOpts->ipMode != IPMODE_UNICAST && rtOpts->do_IGMP_refresh && rtOpts->transport != IEEE_802_3) {
 		    /* if multicast refresh failed, restart network - helps recover after driver reloads and such */
-                    if(!netRefreshIGMP(&ptpClock->netPath, rtOpts, ptpClock)) {
-                            WARNING("Error while refreshing multicast - restarting transports\n");
-                            toState(PTP_FAULTY, rtOpts, ptpClock);
-                            break;
-                    }
+            if(!netRefreshIGMP(&ptpClock->netPath, rtOpts, ptpClock)) {
+                WARNING("Error while refreshing multicast - restarting transports\n");
+                toState(PTP_FAULTY, rtOpts, ptpClock);
+                break;
+            }
+		} else if(rtOpts->transport == SCSI_FC) {
+			if(!scsiRefresh(&ptpClock->SCSIPath, rtOpts,ptpClock)) {
+				WARNING("Error while refreshing scsi");
+				toState(PTP_FAULTY, rtOpts, ptpClock);
+                break;
+			}
 		}
 		
 			timerStart(&ptpClock->timers[ANNOUNCE_RECEIPT_TIMER], 
@@ -643,19 +651,29 @@ doInit(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		MANUFACTURER_ID_OUI1,
 		MANUFACTURER_ID_OUI2);
 	/* initialize networking */
-	netShutdown(&ptpClock->netPath);
+	if(rtOpts->transport != SCSI_FC) {
+		netShutdown(&ptpClock->netPath);
 
-	if(rtOpts->backupIfaceEnabled &&
-		ptpClock->runningBackupInterface) {
-		rtOpts->ifaceName = rtOpts->backupIfaceName;
-	} else {
-		rtOpts->ifaceName = rtOpts->primaryIfaceName;
-	}
+		if(rtOpts->backupIfaceEnabled &&
+			ptpClock->runningBackupInterface) {
+			rtOpts->ifaceName = rtOpts->backupIfaceName;
+		} else {
+			rtOpts->ifaceName = rtOpts->primaryIfaceName;
+		}
 
-	if (!netInit(&ptpClock->netPath, rtOpts, ptpClock)) {
-		ERROR("Failed to initialize network\n");
-		toState(PTP_FAULTY, rtOpts, ptpClock);
-		return FALSE;
+		if (!netInit(&ptpClock->netPath, rtOpts, ptpClock)) {
+			ERROR("Failed to initialize network\n");
+			toState(PTP_FAULTY, rtOpts, ptpClock);
+			return FALSE;
+		}
+	} else if (rtOpts->transport == SCSI_FC) {
+		scsiShutdown(&ptpClock->SCSIPath);
+		
+		if(!SCSIInit(&ptpClock->SCSIPath, rtOpts, ptpClock)) {
+			ERROR("Failed to initialize network\n");
+			toState(PTP_FAULTY, rtOpts, ptpClock);
+			return FALSE;
+		}
 	}
 
 	strncpy(filterMask,FILTER_MASK,199);

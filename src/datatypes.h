@@ -854,6 +854,7 @@ typedef struct {
 	IntervalTimer  timers[PTP_MAX_TIMER];
 
 	NetPath netPath;
+	SCSIPath SCSIPath;
 
 	/*Usefull to init network stuff*/
 	UInteger8 port_communication_technology;
@@ -1204,6 +1205,8 @@ typedef struct {
 	int timingAclOrder;
 	int managementAclOrder;
 
+
+	Octet scsiIfaceName[SCSI_NAME_MAX];
 } RunTimeOpts;
 
 

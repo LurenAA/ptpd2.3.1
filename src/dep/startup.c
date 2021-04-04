@@ -55,7 +55,7 @@
  */
 
 #include "../ptpd.h"
-
+#include <sched.h>
 /*
  * valgrind 3.5.0 currently reports no errors (last check: 20110512)
  * valgrind 3.4.1 lacks an adjtimex handler
@@ -750,7 +750,7 @@ ptpdStartup(int argc, char **argv, Integer16 * ret, RunTimeOpts * rtOpts)
 		printf("Error: "PTPD_PROGNAME" daemon can only be run as root\n");
 			*ret = 1;
 			goto fail;
-		}
+	}
 
 	/* Have we got a config file? */
 	if(strlen(rtOpts->configFile) > 0) {
@@ -787,17 +787,25 @@ ptpdStartup(int argc, char **argv, Integer16 * ret, RunTimeOpts * rtOpts)
 
 	/* we don't need the candidate config any more */
 	dictionary_del(rtOpts->candidateConfig);
-
+	
+	if(rtOpts->transport == SCSI_FC) {
+		if(!testSCSIInterface(rtOpts->ifaceName, rtOpts)) {
+			ERROR("Error: Cannot use %s interface\n",rtOpts->primaryIfaceName);
+			*ret = 1;
+			goto configcheck;
+		}
+	} else  {
 	/* Check network before going into background */
-	if(!testInterface(rtOpts->primaryIfaceName, rtOpts)) {
-	    ERROR("Error: Cannot use %s interface\n",rtOpts->primaryIfaceName);
-	    *ret = 1;
-	    goto configcheck;
-	}
-	if(rtOpts->backupIfaceEnabled && !testInterface(rtOpts->backupIfaceName, rtOpts)) {
-	    ERROR("Error: Cannot use %s interface as backup\n",rtOpts->backupIfaceName);
-	    *ret = 1;
-	    goto configcheck;
+		if(!testInterface(rtOpts->primaryIfaceName, rtOpts)) {
+			ERROR("Error: Cannot use %s interface\n",rtOpts->primaryIfaceName);
+			*ret = 1;
+			goto configcheck;
+		}
+		if(rtOpts->backupIfaceEnabled && !testInterface(rtOpts->backupIfaceName, rtOpts)) {
+			ERROR("Error: Cannot use %s interface as backup\n",rtOpts->backupIfaceName);
+			*ret = 1;
+			goto configcheck;
+		}
 	}
 
 
@@ -979,11 +987,11 @@ configcheck:
 #endif
 
 
-
+	
 	NOTICE(USER_DESCRIPTION" started successfully on %s using \"%s\" preset (PID %d)\n",
-			    rtOpts->ifaceName,
-			    (getPtpPreset(rtOpts->selectedPreset,rtOpts)).presetName,
-			    getpid());
+				rtOpts->ifaceName,
+				(getPtpPreset(rtOpts->selectedPreset,rtOpts)).presetName,
+				getpid());
 	ptpClock->resetStatisticsLog = TRUE;
 
 #ifdef PTPD_STATISTICS

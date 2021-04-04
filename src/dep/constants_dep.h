@@ -270,24 +270,10 @@ enum {
 #define MX_SB_LEN 255
 #define INQ_REPLY_LEN 1024
  
-#ifdef SDEBUG
-#define PRINTLN(format, args...)  \
-do {  \
-    printf(format "\n", ## args);\
-} while(0) 
-#else 
-#define PRINTLN(format, args...) 
-#endif
 
-#define STR_HELPER(x) #x
-#define STR(x) STR_HELPER(x)  
-//__FUNCTION__ is a variable in gcc 
-#define PRINTLNDEBUGHELP(x ,y , z,format, args...)  \
-    PRINTLN(x " " STR(y) " %s  :" format, z ,##args)
+#define SCSI_NAME_MAX 64
 
-#define PRINTLNDEBUG(format, args...)                \
-    PRINTLNDEBUGHELP(__FILE__, __LINE__, __FUNCTION__, format, ## args)
 
-#define DDF(res) PRINTLNDEBUG("%s", strerror(res))  //Default debug function
+
 
 #endif /*CONSTANTS_DEP_H_*/

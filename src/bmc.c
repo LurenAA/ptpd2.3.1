@@ -69,14 +69,23 @@ void initData(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	 * init clockIdentity with MAC address and 0xFF and 0xFE. see
 	 * spec 7.5.2.2.2
 	 */
-	for (i=0;i<CLOCK_IDENTITY_LENGTH;i++)
-	{
-		if (i==3) ptpClock->clockIdentity[i]=0xFF;
-		else if (i==4) ptpClock->clockIdentity[i]=0xFE;
-		else
+	if(rtOpts->transport != SCSI_FC) {
+		for (i=0;i<CLOCK_IDENTITY_LENGTH;i++)
 		{
-		  ptpClock->clockIdentity[i]=ptpClock->netPath.interfaceID[j];
-		  j++;
+			if (i==3) ptpClock->clockIdentity[i]=0xFF;
+			else if (i==4) ptpClock->clockIdentity[i]=0xFE;
+			else
+			{
+			ptpClock->clockIdentity[i]=ptpClock->netPath.interfaceID[j];
+			j++;
+			}
+		}
+	} else if (rtOpts->transport == SCSI_FC) {
+		ptpClock->clockIdentity[0] = 0xFF;
+		ptpClock->clockIdentity[1] = 0x04; //scsi
+		for(i = 2; i < CLOCK_IDENTITY_LENGTH; ++i) {
+				ptpClock->clockIdentity[i]= (ptpClock->SCSIPath.info.wwn & (0xFF << j));
+				++j;
 		}
 	}
 
@@ -137,8 +146,11 @@ void initData(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	 *  Initialize random number generator using same method as ptpv1:
 	 *  seed is now initialized from the last bytes of our mac addres (collected in net.c:findIface())
 	 */
-	srand((ptpClock->netPath.interfaceID[PTP_UUID_LENGTH - 1] << 8) +
-	    ptpClock->netPath.interfaceID[PTP_UUID_LENGTH - 2]);
+	if(rtOpts->transport != SCSI_FC)
+		srand((ptpClock->netPath.interfaceID[PTP_UUID_LENGTH - 1] << 8) +
+			ptpClock->netPath.interfaceID[PTP_UUID_LENGTH - 2]);
+	else if (rtOpts->transport == SCSI_FC) 
+		srand(ptpClock->SCSIPath.info.wwn & 0xFFFF);
 
 	/*Init other stuff*/
 	ptpClock->number_foreign_records = 0;

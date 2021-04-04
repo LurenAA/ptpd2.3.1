@@ -1,7 +1,173 @@
 
 #include "../ptpd.h"
-//find empty place in dictionary
+#include <unistd.h>
+
+
+static
+Boolean isEndInSlash(const char* str) {
+    int len = strlen(str);
+
+    if(!len) return FALSE;
+
+    return  str[len - 1] == '/'? TRUE : FALSE;
+}
+
+static 
+Boolean scsiinterfaceExist(const char* ifaceName) {
+    DIR* dirp;
+    Boolean ret = TRUE;
+    struct dirent* direntp = NULL;
+    int node_name_number = 0, port_state_number = 0;
+
+    if(!strlen(ifaceName)) {
+        DBG("scsiinterfaceExists called for an empty interface!");
+        return FALSE;
+    }
+
+    dirp = opendir(ifaceName);
+    if(!dirp) {
+        DBG("scsiinterfaceExists called for a not exit directory! %s",strerror(errno));
+        return FALSE;
+    }
+
+    for(direntp = readdir(dirp); 
+    direntp != NULL; 
+    direntp = readdir(dirp)) {
+        if(!strcmp(&direntp->d_name[0], "node_name")) {
+            ++node_name_number;
+        }
+        else if(!strcmp(&direntp->d_name[0], "port_state")) {
+            ++port_state_number;
+        }
+        if(node_name_number == 1 && port_state_number == 1) 
+            break;
+    }
+
+    if(node_name_number != 1 || port_state_number != 1) {
+        DBG("node_name_number: %d, port_state_number: %d", node_name_number, port_state_number);
+        ret = FALSE;
+        goto end;
+    }
+
+
+end:
+    closedir(dirp);
+    return ret;
+}
+
+static 
+Boolean getSCSIInterfaceInfo(const char* ifaceName, SCSIInterfaceInfo* info) {
+    if(!scsiinterfaceExist(ifaceName) || !info)
+        return FALSE;
+    
+    int fd;
+    Boolean ret = TRUE;
+    char fileName[SCSI_NAME_MAX + 16];
+    int len = strlen(ifaceName);
+    char wwn[19] = {};
+    ssize_t readN = 0;
+    char* endptr = NULL;
+
+    if(!len) {
+        DBG("getSCSIInterfaceInfo called for an empty interface!");
+        return FALSE;
+    }
+
+    memset(&fileName[0], '\0', sizeof(fileName));
+    strcpy(&fileName[0], ifaceName);
+    if(isEndInSlash(ifaceName) == FALSE) {
+        fileName[len] = '/';
+        ++len;
+    }
+    strcat(&fileName[0], "node_name");
+
+    fd = open(&fileName[0], O_RDONLY);
+    if(fd == -1) {
+        DBG("getSCSIInterfaceInfo open node_name %s", strerror(errno));
+        return FALSE;
+    }
+
+    readN = read(fd, &wwn[0], 18);
+    if(readN == -1 || readN != 18) {
+        DBG("getSCSIInterfaceInfo read %d", readN);
+        ret = FALSE;
+        goto end;
+    }
+    wwn[readN] = '\0';
+    info->wwn = strtoul(&wwn[0], &endptr, HEX);
+    if(info->wwn == ULONG_MAX || endptr == &wwn[0]) {
+        DBG("getSCSIInterfaceInfo strtoul");
+        ret = FALSE;
+        goto end;
+    }
+    close(fd);
+
+    memset(&fileName[len], '\0', sizeof(fileName) - len);
+    strcat(&fileName[0], "port_state");
+    fd = open(&fileName[0], O_RDONLY);
+    if(fd == -1) {
+        DBUGDF(errno);
+        return FALSE;
+    }
+
+    memset(&wwn[0], '\0', sizeof(wwn));
+    readN = read(fd, &wwn[0], sizeof(wwn));
+    if(readN == -1) {
+        DBUGDF(errno);
+        ret = FALSE;
+        goto end;
+    }
+
+    if(!strncmp(&wwn[0], "Online", 6)) 
+        info->online = TRUE;
+    else 
+        info->online = FALSE;
+
+end:
+    close(fd);
+    return ret;
+}
  
+Boolean testSCSIInterface(char * ifaceName, const RunTimeOpts* rtOpts) {
+    if(rtOpts->transport != SCSI_FC) {
+        ERROR("Unsupported transport: %d\n", rtOpts->transport);
+        return FALSE;
+    }
+    
+    SCSIInterfaceInfo info;
+    
+    if(getSCSIInterfaceInfo(ifaceName, &info) == FALSE) 
+        return FALSE;
+    
+    if(info.wwn == 0 || info.online != TRUE)
+        return FALSE;
+    
+    return TRUE;
+}
+
+Boolean scsiShutdown(SCSIPath* scsi) {
+    int i;
+    if(!scsi)
+        return TRUE;
+    for(i = 0; i < DICTIONARY_LEN; ++i) {
+        if(scsi->dictionary_values[i] != NULL) {
+            free((void*)scsi->dictionary_values[i]);
+            scsi->dictionary_values[i] = NULL;
+        }
+        if(scsi->dictionary_fd[i]) {
+            close(scsi->dictionary_fd[i]); 
+            scsi->dictionary_fd[i] = 0;
+        }
+    }
+    memset(&scsi->sbp[0], 0, MX_SB_LEN * sizeof(unsigned char));
+    memset(&scsi->cmdp[0], 0, INQ_CMD_LEN * sizeof(unsigned char));
+    memset(&scsi->dxferp[0], 0, INQ_REPLY_LEN * sizeof(unsigned char));
+    memset(&scsi->io, 0 ,sizeof(sg_io_hdr_t));
+    memset(&scsi->dictionary_keys[0], 0, sizeof(scsi->dictionary_keys));
+
+    return TRUE;
+}
+
 int findEmptyPlace(const SCSIPath* scsi) {
     int i = DICTIONARY_LEN;
     if(!scsi) {
@@ -18,7 +184,6 @@ out:
 }
 
 //通过wwn来查找对应的下标
-
 int findIndexInDictionaryUsingWWN(const SCSIPath* scsi, uint64_t n) {
     int i = DICTIONARY_LEN;
     if(!scsi)
@@ -33,7 +198,6 @@ out:
 }
 
 //通过设备位置的字符来找
-
 int findIndexInDictionaryUsingValue(const SCSIPath* scsi, const char* value) {
     int i = DICTIONARY_LEN;
     if(!scsi || !value) 
@@ -48,7 +212,6 @@ out:
 }
 
 //使用fd来查找
-
 int findIndexInDictionaryUsingFd(const SCSIPath* scsi, int fd) {
     int i = DICTIONARY_LEN;
     if(!scsi) 
@@ -63,59 +226,24 @@ out:
 }
 
 //检查poll中一个对象的状态
-// 0 true -1false
-int checkPollSingle(int fd, short flags) {
+static Boolean 
+checkPollSingle(int fd, short flags) {
     static struct pollfd plf;
     int n = 0;
-    int res = 0;
 
     memset(&plf, 0, sizeof(struct pollfd));
     plf.fd = fd;
     plf.events = flags;
     n = poll(&plf, 1, 0);
-    if(n == 0) {
-        res = -1;
-        goto out;
-    }
-    if(n == -1) {
-        res = errno;
-        PRINTLNDEBUG("poll %s", strerror(res));
-        goto out;
+    if(n == 0 || n  == -1) {
+        DBUGDF(errno);
+        return FALSE;
     }
 
     if((plf.revents & flags) == 0)
-        res = -1;
-out:
-    return res;
-}
+        return FALSE;
 
-//设置wwns的数量
-int getWWNsNumber(uint64_t * wwns, int size, int* wwns_number) {
-    int res = 0, i = 0;
-    *wwns_number = 0;
-    if(size <= 0 || !wwns) {
-        res = EINVAL;
-        return res;   
-    }
-    for(; i < size; ++i) {
-        if(wwns[i])
-            ++(*wwns_number);
-    }
-    return res;
-}
-
-//查找是否存在该wwn
-static
-bool ifhaveThisWWN(uint64_t * wwns, int size, uint64_t wwn) {
-    int i = 0;
-
-    for( ; i < size; ++i) {
-        if(wwns[i] == 0)
-            continue;
-        if(wwns[i] == wwn) 
-            return true;
-    }
-    return false;
+    return TRUE;
 }
 
 //查找出wwns中的空位
@@ -131,9 +259,9 @@ int findEmptyWWNPlace(uint64_t * wwns, int size) {
 }
 
 //检测HBA设备是否在线 host_path = /sys/class/fc_host/host5
-static 
-int checkHBAPortState(const char* host_path, int* ifonline) {
-    int res = 0;
+static Boolean
+checkHBAPortState(const char* host_path, int* ifonline) {
+    Boolean res = TRUE;
     char fileName[MAX_FILENAME_LENGTH];
     char readBuf[PORT_STATE_LEN];
     int fd = 0;
@@ -142,25 +270,22 @@ int checkHBAPortState(const char* host_path, int* ifonline) {
 
     memset(&fileName[0], '\0', MAX_FILENAME_LENGTH);
     if(strlen(host_path) >= MAX_FILENAME_LENGTH) {
-        res = EINVAL;
-        PRINTLNDEBUG("strlen(host_path) = %ld", strlen(host_path));
-        goto out1;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     strcpy(&fileName[0], host_path);
     strcat(&fileName[0], FC_STATE_NAME);
 
     fd = open(&fileName[0], O_RDONLY);
     if(fd == -1) {
-        res = errno;
-        PRINTLNDEBUG("checkHBAPortState: open error: %s", strerror(res));
-        goto out1;
+        res = FALSE;
+        goto out;
     }
 
     memset(&readBuf[0], '\0', PORT_STATE_LEN);
     rdnum = read(fd, &readBuf[0], PORT_STATE_LEN);
     if(rdnum == -1) {
-        res = errno;
-        PRINTLNDEBUG("checkHBAPortState read error: %s", strerror(res));
+        res = FALSE;
         goto out;
     }
     //delete '\n'
@@ -173,147 +298,19 @@ int checkHBAPortState(const char* host_path, int* ifonline) {
         *ifonline = 0;
 out:
     close(fd);
-out1:
+
     return res;
-}
-
-// 获取本机中的HBA的wwn
-int getWWN(SCSIPath* scsi) {
-    uint64_t* wwns = &scsi->wwns[0];
-    int res = 0;
-    struct dirent* direntp;
-    DIR* dirp = opendir(FC_HOST_LOCATION);
-    int host_num[HOST_MAX_NUM];
-    int host_num_index = 0, i = 0;
-    char file_name_buffer[MAX_FILENAME_LENGTH];
-    int index = 0, fd;
-    ssize_t rdnum = 0;
-    char wwn_buffer[WWNS_LEN * 2 + 3]; // '\0' +1 '0x' +2 
-    char* endptr;
-    int ifonline = 0;
-    int wwns_index = 0;
-    uint64_t tmp_wwn = 0;
-    
-    if(!dirp) {
-        res = errno;
-        PRINTLNDEBUG("dir open error: %s", strerror(res));
-        goto out1;
-    }
-
-    for(direntp = readdir(dirp) ; 
-    direntp != NULL; 
-    direntp = readdir(dirp)) {
-        if(errno) {
-            res = errno;
-            PRINTLNDEBUG("readdir error: %s", strerror(res));
-            goto out;
-        }
-        if(!strlen(direntp->d_name) || strcmp(direntp->d_name, ".") == 0 ||
-        strcmp(direntp->d_name, "..") == 0 || strncmp(direntp->d_name, "host", 4) != 0) {
-            continue;
-        }
-        host_num[host_num_index] = atoi(direntp->d_name + 4);
-        ++host_num_index; 
-        errno = 0;
-    }
-
-    if(!host_num_index) {
-        res = ENOENT;
-        PRINTLNDEBUG("no device in " FC_HOST_LOCATION);
-        goto out;
-    }
-
-    memset(file_name_buffer, '\0', sizeof(file_name_buffer));
-    memcpy(&file_name_buffer[0], FC_HOST_LOCATION, sizeof(FC_HOST_LOCATION));
-    index = strlen(FC_HOST_LOCATION);
-    for(i = 0; i < host_num_index; ++i) {
-        memset(&file_name_buffer[0] + index, '\0', MAX_FILENAME_LENGTH - index);
-        sprintf(&file_name_buffer[0] + index, "/host%d", host_num[i]);
-        res = checkHBAPortState(&file_name_buffer[0], &ifonline);
-        if((!res) && (!ifonline)) 
-            continue;
-        strcat(file_name_buffer, FC_NODE_NAME);
-
-        fd = open(&file_name_buffer[0], O_RDONLY);
-        if(fd == -1) {
-            res = errno;
-            PRINTLNDEBUG("open %s error: %s", &file_name_buffer[0], strerror(res));
-            goto out;
-        }
-        // if(lseek(fd, 2, SEEK_SET) != 2) {
-        //     res = errno;
-        //     close(fd);
-        //     PRINTLNDEBUG("lseek file : %s error : %s", &file_name_buffer[0], strerror(res));
-        //     goto out;
-        // }
-        memset(wwn_buffer, '\0', WWNS_LEN * 2 + 3);
-        rdnum = read(fd, &wwn_buffer[0], WWNS_LEN * 2 + 2);
-        if(rdnum != WWNS_LEN * 2 + 2) {
-            res = ERANGE;      
-            PRINTLNDEBUG("read number error: %ld , %s", rdnum , strerror(res));
-            goto out;
-        }
-        tmp_wwn = strtoul(&wwn_buffer[0], &endptr, 16);
-        if(endptr == &wwn_buffer[0]) {
-            res = -1;
-            PRINTLNDEBUG("endptr == &wwn_buffer[0]");
-            close(fd);
-            goto out;
-        }
-        if(tmp_wwn == ULONG_MAX  && errno == ERANGE) {
-            res = errno;
-            PRINTLNDEBUG("strtoul : %s", strerror(res));
-            close(fd);
-            goto out;
-        }
-        if(ifhaveThisWWN(wwns, WWN_MAX_NUM, tmp_wwn) == true) {
-            close(fd);
-            continue;
-        }
-        wwns_index = findEmptyWWNPlace(wwns, WWN_MAX_NUM);
-        if(wwns_index == WWN_MAX_NUM) {
-            res = ERANGE;
-            close(fd);
-            PRINTLNDEBUG("full of wwns");
-            goto out;
-        }
-        wwns[wwns_index] = tmp_wwn;
-
-        if(close(fd) == -1) {
-            res = errno;
-            PRINTLNDEBUG("close %s error: %s", &file_name_buffer[0], strerror(res));
-            goto out;
-        }
-        
-    }
-    
-out:
-    closedir(dirp);
-out1:
-    return res;
-}
-
-//释放字典所有资源
-int freeAllDictionaryValues(char** dictionary_values, int size) {
-    if(!dictionary_values || size <= 0) {
-        return EINVAL;
-    }
-    for(int i = 0; i < size; ++i) {
-        if(dictionary_values[i]) 
-            free((void*)dictionary_values[i]);
-    }
-    return 0;
 }
 
 //初始化sg_io_hdr_t
-static 
-int initSgIoHdr(sg_io_hdr_t *io, int dxfer_direction, unsigned char cmd_len, unsigned char mx_sb_len, 
+static Boolean
+initSgIoHdr(sg_io_hdr_t *io, int dxfer_direction, unsigned char cmd_len, unsigned char mx_sb_len, 
 unsigned int dxfer_len, void * dxferp, unsigned char * cmdp, unsigned char * sbp,
 unsigned int flags) {
-    int res = 0;
+    Boolean res = TRUE;
     if(!io) {
-        res = EINVAL;
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     memset(io, 0 ,sizeof(sg_io_hdr_t));
     io->interface_id = (int)'S';
@@ -326,57 +323,49 @@ unsigned int flags) {
     io->flags = flags;
     io->timeout = DEFAULT_TIME_OUT;
     io->cmdp = cmdp;
-out:
+
     return res;
 }
 
 //发送SCSI请求
 static
-int sendSCSI(sg_io_hdr_t *io, int fd) {
-    int res = 0;
+Boolean sendSCSI(sg_io_hdr_t *io, int fd) {
+    Boolean res = TRUE;
     if(!io || !io->dxfer_len || !io->dxferp || !io->sbp) {
-        res = EINVAL;
-        PRINTLNDEBUG("dxfer_len: dxfer_len == 0 or dxferp == NULL or sbp == NULL%s", strerror(res));
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     if(io->cmd_len > 16 || io->cmd_len < 6 || !io->cmdp) {
-        res = EMSGSIZE;
-        PRINTLN("cmd_len outofrang or cmdp == NULL : %s", strerror(res));
-        goto out;
+        DBUGDF(EMSGSIZE);
+        return FALSE;
     }
 
-    if(checkPollSingle(fd, POLLOUT) != 0) {
-        //try again
-        res = EAGAIN;
-        goto out;
+    if(checkPollSingle(fd, POLLOUT) == FALSE) {
+        DBUGDF(EAGAIN);
+        return FALSE;
     }
 
     res = write(fd, (void*)io, sizeof(sg_io_hdr_t));
     if(res != sizeof(sg_io_hdr_t) && errno != EDOM) {
-        res = EINVAL;
-        PRINTLNDEBUG("write scsi not enough");
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     if(errno == EDOM) {
-        res = errno;
-        PRINTLNDEBUG("attemp reach SG_MAX_QUEUE");
-        goto out;
+        DBUGDF(EDOM);
+        return FALSE;
     }
-    res = 0;
 
-out:
     return res;
 }
 
 //保存dictionary
-static
-int saveDictionary(SCSIPath* scsi, uint64_t wwn, const char* value, int fd, int* indexp) {
-    int res = 0;
+static Boolean
+saveDictionary(SCSIPath* scsi, uint64_t wwn, const char* value, int fd, int* indexp) {
+    Boolean res = TRUE;
     int index = DICTIONARY_LEN;
     if(!scsi || (wwn == 0&& !value&& fd==0)) {
-        res = EINVAL;
-        PRINTLNDEBUG("value invalid");
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     
     if(value && index == DICTIONARY_LEN)
@@ -390,9 +379,8 @@ int saveDictionary(SCSIPath* scsi, uint64_t wwn, const char* value, int fd, int*
         //find empty place
         index = findEmptyPlace(scsi);
         if(index == DICTIONARY_LEN) {
-            res = ERANGE;
-            PRINTLNDEBUG("full of dictionary");
-            goto out;
+            DBUGDF(ERANGE);
+            return FALSE;
         }
     }
     if(indexp)
@@ -401,104 +389,97 @@ int saveDictionary(SCSIPath* scsi, uint64_t wwn, const char* value, int fd, int*
     scsi->dictionary_keys[index] = wwn != 0 ? wwn : scsi->dictionary_keys[index];
     scsi->dictionary_values[index] = value != NULL ? strdup(value) : scsi->dictionary_values[index];
 
-
-out :
     return res;
 }
-//get fd buy dev str
-static 
-int getFdByFileName(SCSIPath* scsi, const char* dev, int* fdp) {
-    int res = 0;
+//get fd by dev str
+static Boolean 
+getFdByFileName(SCSIPath* scsi, const char* dev, int* fdp) {
+    Boolean res = TRUE;
     if(!scsi || !dev || !fdp) { 
-        res = EINVAL;
-        PRINTLNDEBUG("%s", strerror(res));
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     int index = findIndexInDictionaryUsingValue(scsi, dev);
     if(index == DICTIONARY_LEN || scsi->dictionary_fd[index] == 0) {
         //no this fd before
         int fd = open(dev, O_RDWR | O_NONBLOCK);
         if(fd == -1) {
-            res = errno;
-            PRINTLNDEBUG("open fd error %s", strerror(res));
-            goto out;
+            DBUGDF(EINVAL);
+            return FALSE;
         }
         res = saveDictionary(scsi, 0, dev, fd, &index);
-        if(res) 
-            goto out;
+        if(!res) 
+            return FALSE;
         *fdp = fd;
     } 
-out:    
+
     return res;    
 }
 
 //发送SCSI请求
-static
-int sendSCSIByDevName(sg_io_hdr_t* io, const char* dev, SCSIPath* scsi) {
-    int res = 0, index;
+static Boolean
+sendSCSIByDevName(sg_io_hdr_t* io, const char* dev, SCSIPath* scsi) {
+    Boolean res = TRUE;
+    int index;
     if(!dev) {
-        res = EINVAL;
-        PRINTLNDEBUG("dev = null");
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     res = getFdByFileName(scsi, dev, &index);
-    if(res) 
-        goto out;
+    if(!res) 
+        return FALSE;
     res = sendSCSI(io, scsi->dictionary_fd[index]);
-out:
+
     return res;
 }
 
-static 
-int sendSCSICommandByFd(SCSIPath* scsi,  int fd,  int dxfer_direction, unsigned char cmd_len) {
-    int res = 0;
+static Boolean 
+sendSCSICommandByFd(SCSIPath* scsi,  int fd,  int dxfer_direction, unsigned char cmd_len) {
+    Boolean res = TRUE;
     sg_io_hdr_t* iop = &scsi->io;
     if(!scsi) {
-        res = EINVAL;
-        PRINTLN("%s", strerror(res));
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     res = initSgIoHdr(iop, dxfer_direction, cmd_len, MX_SB_LEN, INQ_REPLY_LEN,
     (void*)&scsi->dxferp[0], &scsi->cmdp[0], &scsi->sbp[0], 0);
-    if(res)
-        goto out;
+    if(res == FALSE)
+        return FALSE;
     res = sendSCSI(iop, fd);
-out:
+
     return res;
 }
 
 static
 int sendSCSICommand(SCSIPath* scsi, const char* dev) {
-    int res = 0;
+    Boolean res = TRUE;
     int fd;
     sg_io_hdr_t* iop = &scsi->io;
     
     if(!scsi || !dev) {
-        res = EINVAL;
-        PRINTLN("%s", strerror(res));
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     res = getFdByFileName(scsi, dev, &fd);
-    if(res) {
-        goto out;
-    }
+    if(!res) 
+        return FALSE;
 
     res = initSgIoHdr(iop, SG_DXFER_FROM_DEV, 6, MX_SB_LEN, INQ_REPLY_LEN,
     (void*)&scsi->dxferp[0], &scsi->cmdp[0], &scsi->sbp[0], 0);
-    if(res)
-        goto out;
+    if(!res)
+        return FALSE;
     
     res = sendSCSI(iop, fd);
-out:
+
     return res;
 }
 
-int sentINQUIRY(SCSIPath* scsi, const char* dev) {
-    int res = 0;
+static Boolean 
+sentINQUIRY(SCSIPath* scsi, const char* dev) {
+    Boolean res = TRUE;
     if(!scsi || !dev) {
-        res = EINVAL;
-        PRINTLN("%s", strerror(res));
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     //cdb
     memset(scsi->cmdp, 0, INQ_CMD_LEN);
@@ -507,16 +488,15 @@ int sentINQUIRY(SCSIPath* scsi, const char* dev) {
     scsi->cmdp[4] = INQ_REPLY_LEN & 0xff;
 
     res = sendSCSICommand(scsi, dev);
-out:
+
     return res;
 }
 
-int sentINQUIRYByFd(SCSIPath* scsi, int fd) {
-    int res = 0;
+static Boolean
+sentINQUIRYByFd(SCSIPath* scsi, int fd) {
     if(!scsi ) {
-        res = EINVAL;
-        DDF(res);
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     //cdb
     memset(scsi->cmdp, 0, INQ_CMD_LEN);
@@ -524,18 +504,18 @@ int sentINQUIRYByFd(SCSIPath* scsi, int fd) {
     scsi->cmdp[3] = INQ_REPLY_LEN >> 8; //ALLOCATION LENGTH
     scsi->cmdp[4] = INQ_REPLY_LEN & 0xff;
 
-    res = sendSCSICommandByFd(scsi, fd, SG_DXFER_FROM_DEV, 6);
-out:
-    return res;
+    if(!sendSCSICommandByFd(scsi, fd, SG_DXFER_FROM_DEV, 6))
+        return FALSE;
+
+    return TRUE;
 }
 
 //初始化sg_io
-int initAllAboutSg(SCSIPath* scsi) {
-    int res = 0;
+static Boolean initAllAboutSg(SCSIPath* scsi) {
+    Boolean res = TRUE;
     if(!scsi) {
-        res = EINVAL;
-        DDF(res);
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     memset(&scsi->cmdp[0], 0, INQ_CMD_LEN);
     memset(&scsi->sbp[0], 0, MX_SB_LEN);
@@ -546,39 +526,35 @@ int initAllAboutSg(SCSIPath* scsi) {
     io->cmdp = &scsi->cmdp[0];
     io->sbp = &scsi->sbp[0];
     io->dxferp = (void*)&scsi->dxferp[0];
-out:
+
     return res;
 }
 
-int readSCSI(SCSIPath* scsi, int fd, int * readnum) {
-    int res = 0;
+Boolean readSCSI(SCSIPath* scsi, int fd, int * readnum) {
+    Boolean res = TRUE;
     
     if(!scsi) {
-        res = EINVAL;
-        DDF(res);
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     initAllAboutSg(scsi);
     int nread = read(fd, &scsi->io, sizeof(sg_io_hdr_t));
     if(nread == -1) {
-        res = errno;
-        DDF(res);
-        goto out;
+        DBUGDF(errno);
+        return FALSE;
     }
     if(readnum) 
         *readnum = nread;
     if(nread != sizeof(sg_io_hdr_t)) {
-        res = EIO;
-        PRINTLNDEBUG("nread != sizeof(sg_io_hdr_t)");
-        goto out;
+        DBUGDF(EIO);
+        return FALSE;
     }
     
-out:
     return res;
 }
 
 //扫描本地scsi设备,发送请求
-int scanSCSIEquipmemt(SCSIPath* scsi) {
+Boolean scanSCSIEquipmemt(SCSIPath* scsi) {
     DIR* dirp;
     struct dirent* direntp;
     int res = 0;
@@ -588,19 +564,20 @@ int scanSCSIEquipmemt(SCSIPath* scsi) {
     int fd = 0;
 
     if(!scsi) {
-        res = EINVAL;
-        DDF(res);
-        goto out;
+        
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     dirp = opendir(DEV_PREFIX);
     if(dirp == NULL) {
-        res = errno;
-        DDF(res);
-        goto out;
+
+        DBUGDF(errno);
+        return FALSE;
     }
 
     memset(&tmpName[0], '\0' ,sizeof(tmpName));
     strcpy(&tmpName[0], DEV_PREFIX);
+
     for(direntp = readdir(dirp); 
      direntp != NULL;
     direntp = readdir(dirp)
@@ -620,7 +597,7 @@ int scanSCSIEquipmemt(SCSIPath* scsi) {
         fd = open(&tmpName[0], O_RDWR | O_NONBLOCK);
         if(fd == -1) {
             res = errno;
-            DDF(res);
+            DBUGDF(res);
             if(isNew) {
                 free((void*)scsi->dictionary_values[index]);
                 scsi->dictionary_values[index] = NULL;
@@ -629,8 +606,8 @@ int scanSCSIEquipmemt(SCSIPath* scsi) {
         }
         scsi->dictionary_fd[index] = fd;
         res = sentINQUIRYByFd(scsi, fd);
-        if(res) {
-            DDF(res);
+        if(!res) {
+            DBUGDF(res);
             if(isNew) {
                 free((void*)scsi->dictionary_values[index]);
                 scsi->dictionary_values[index] = NULL;
@@ -642,16 +619,15 @@ int scanSCSIEquipmemt(SCSIPath* scsi) {
         isNew = false;
     }
 
-out:
-    return res;
+    return TRUE;
 }
 
-int parseINQUIRY(SCSIPath* scsi, int fd) {
-    int res = 0;
+Boolean 
+parseINQUIRY(SCSIPath* scsi, int fd) {
+    Boolean res = TRUE;
     if(!scsi) {
-        res = EINVAL;
-        DDF(res);
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     int alloc_len;
     unsigned char* buf = &scsi->dxferp[0];
@@ -660,16 +636,14 @@ int parseINQUIRY(SCSIPath* scsi, int fd) {
 
     alloc_len = (int)buf[4] + 4;
     if(alloc_len < 31) {
-        res = EINVAL;
-        DDF(res);
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     //check inq id
     ifidok = memcmp(&buf[18], WWN_INQ_ID, 6);
     if(ifidok) {
-        res = EINVAL;
-        DDF(res);
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
 
     // wwn = strtoul((char*)&buf[WWN_BEGIN], &eptr, HEX);
@@ -683,21 +657,19 @@ int parseINQUIRY(SCSIPath* scsi, int fd) {
    
     res = saveDictionary(scsi, wwn, NULL, fd, NULL);
 
-out:
     return res;
 }
 
 static
-int processInformation(SCSIPath* scsi, int fd) {
-    int res = 0;
+Boolean processInformation(SCSIPath* scsi, int fd) {
+    Boolean res = TRUE;
     if(memcmp(&scsi->dxferp[18], WWN_INQ_ID, 6) == 0)
         parseINQUIRY(scsi, fd);
 
     return res;
 }
 
-int readFromTarget(SCSIPath* scsi) {
-    int res = 0;
+Boolean readFromTarget(SCSIPath* scsi) {
     int i= 0;
     int poll = 0;
     int fd;
@@ -706,27 +678,25 @@ int readFromTarget(SCSIPath* scsi) {
         if(fd == 0)
             continue;
         poll = checkPollSingle(fd, POLLIN);
-        if(poll == -1) {
+        if(poll == FALSE) {
             continue;
         }
-        if(readSCSI(scsi, fd, NULL) == 0)
+        if(readSCSI(scsi, fd, NULL) == TRUE)
             processInformation(scsi, fd);
     }
 
-    return res;
+    return TRUE;
 }
 
-int sentWRITE16ByFd(SCSIPath* scsi, int fd, const char* str, int len) {
-    int res = 0;
+Boolean sentWRITE16ByFd(SCSIPath* scsi, int fd, const char* str, int len) {
+    Boolean res = TRUE;
     if(!scsi || !str || len <= 0) {
-        res = EINVAL;
-        DDF(res);
-        goto out;
+        DBUGDF(EINVAL);
+        return FALSE;
     }
     if(len > sizeof(scsi->dxferp)) {
-        res = E2BIG;
-        DDF(res);
-        goto out;
+        DBUGDF(E2BIG);
+        return FALSE;
     }
 
     memset(&scsi->cmdp[0], 0, INQ_CMD_LEN);
@@ -737,6 +707,30 @@ int sentWRITE16ByFd(SCSIPath* scsi, int fd, const char* str, int len) {
     memcpy(&scsi->dxferp[0], str, len); 
 
     res = sendSCSICommandByFd(scsi, fd, SG_DXFER_TO_DEV, 16);
-out :
+
     return res ;
+}
+
+
+Boolean 
+SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
+    if(!testSCSIInterface(rtOpts->ifaceName, rtOpts) || 
+    !getSCSIInterfaceInfo(rtOpts->ifaceName, &scsi->info))
+        return FALSE;
+    
+    if(!scanSCSIEquipmemt(scsi))
+        return FALSE;
+    
+    usleep(1000 * 100);
+
+    readFromTarget(scsi);
+
+    return TRUE;   
+}
+
+Boolean
+scsiRefresh(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
+    Boolean res = TRUE;
+    
+    return res;
 }

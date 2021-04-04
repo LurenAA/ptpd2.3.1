@@ -44,6 +44,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
+#include <dirent.h>
 #ifdef HAVE_STRINGS_H
 #include <strings.h>
 #endif /* HAVE_STRINGS_H */
@@ -74,6 +76,7 @@
 #include <glob.h>
 #include <stddef.h>
 #include <stdint.h>
+
 #ifdef HAVE_UTMPX_H
 #include <utmpx.h>
 #else

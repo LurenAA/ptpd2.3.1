@@ -17,7 +17,7 @@ AM_CPPFLAGS    += $(PTP_DBL) $(PTP_DAEMON) $(PTP_EXP) $(PTP_SNMP) $(PTP_PCAP) $(
 
 NULL=
 
-CFLAGS += -ggdb -O0 -DSDEBUG -g
+CFLAGS += -ggdb -O0 -DSDEBUG -g -D__USE_GNU
 #VERSION = 2.3.1
 #SHAREDLIBVER = $(SHAREDLIB).$(VERSION)
 #	ptp_timers.c			

@@ -143,6 +143,8 @@
     ( ( (strcmp(iniparser_getstring(dict, "%helponly%:%helpitem%", ""),key) == 0) ||\
     CONFIG_ISTRUE("%helponly%:%helponly%")) && (strcmp(helptext, "") != 0) )
 
+//(dict["%helponly%:%helpitem%"] == key || dict["%helponly%:%helponly%"] == true) && helptext != null
+
 #define HELP_ON()\
     ( CONFIG_ISTRUE("%helponly%:%helponly%") || \
     CONFIG_ISSET("%helponly%:%helpitem%") )
@@ -1206,7 +1208,24 @@ parseConfig ( dictionary* dict, RunTimeOpts *rtOpts )
 
 /* ===== ptpengine section ===== */
 
-	CONFIG_KEY_REQUIRED("ptpengine:interface");
+	CONFIG_MAP_SELECTVALUE("ptpengine:transport",rtOpts->transport,rtOpts->transport,
+		"Transport type for PTP packets. Ethernet transport requires libpcap support.",
+				"ipv4",		UDP_IPV4,
+#if 0
+				"ipv6",		UDP_IPV6,
+#endif
+				"scsifc",   SCSI_FC,
+				"ethernet", 	IEEE_802_3
+				);
+	
+	if(rtOpts->transport != SCSI_FC) {
+		CONFIG_KEY_REQUIRED("ptpengine:interface"); //on interface = >  set parseResult = false
+	} else if(rtOpts->transport == SCSI_FC ) {
+		CONFIG_KEY_REQUIRED("ptpengine:scsiinterface");
+	}
+
+	CONFIG_MAP_CHARARRAY("ptpengine:scsiinterface",rtOpts->scsiIfaceName,rtOpts->scsiIfaceName,
+	"Scsi interface to use -  /sys/class/fc_host/host5 etc. (required).");
 
 	CONFIG_MAP_CHARARRAY("ptpengine:interface",rtOpts->primaryIfaceName,rtOpts->primaryIfaceName,
 	"Network interface to use - eth0, igb0 etc. (required).");
@@ -1240,16 +1259,6 @@ parseConfig ( dictionary* dict, RunTimeOpts *rtOpts )
 	 			    "ptpengine:unicast_negotiation");
 
 	ptpPreset = getPtpPreset(rtOpts->selectedPreset, rtOpts);
-
-
-	CONFIG_MAP_SELECTVALUE("ptpengine:transport",rtOpts->transport,rtOpts->transport,
-		"Transport type for PTP packets. Ethernet transport requires libpcap support.",
-				"ipv4",		UDP_IPV4,
-#if 0
-				"ipv6",		UDP_IPV6,
-#endif
-				"ethernet", 	IEEE_802_3
-				);
 
 	CONFIG_MAP_BOOLEAN("ptpengine:dot2as",rtOpts->dot2AS,rtOpts->dot2AS,
 		"Enable TransportSpecific field compatibility with 802.1AS / AVB (requires Ethernet transport)");
@@ -2441,8 +2450,10 @@ parseConfig ( dictionary* dict, RunTimeOpts *rtOpts )
 /* ============== END CONFIG MAPPINGS, TRIGGERS AND DEPENDENCIES =========== */
 
 /* ==== Any additional logic should go here ===== */
-
-	rtOpts->ifaceName = rtOpts->primaryIfaceName;
+	if(rtOpts->transport != SCSI_FC)
+		rtOpts->ifaceName = rtOpts->primaryIfaceName;	
+	else if(rtOpts->transport == SCSI_FC)
+		rtOpts->ifaceName = rtOpts->scsiIfaceName;
 
 	/* Check timing packet ACLs */
 	if(rtOpts->timingAclEnabled) {
