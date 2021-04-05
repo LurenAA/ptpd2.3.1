@@ -229,10 +229,19 @@ typedef struct {
     unsigned char cmdp[INQ_CMD_LEN]; //cmdp
     unsigned char sbp[MX_SB_LEN]; //sbp
     unsigned char dxferp[INQ_REPLY_LEN]; // dxferp
+
+    pthread_t thread[SCST_THREAD];
+    int scst_usr_fd;
+    struct scst_user_dev_desc desc;
 } SCSIPath;
 
 
-
+struct vdisk_cmd
+{
+    struct scst_user_get_cmd *cmd;
+    struct scst_user_reply_cmd *reply;
+    SCSIPath* scsi;
+};
 
 
 

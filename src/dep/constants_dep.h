@@ -270,8 +270,8 @@ enum {
 #define MX_SB_LEN 255
 #define INQ_REPLY_LEN 1024
  
-
 #define SCSI_NAME_MAX 64
+#define SCST_THREAD 4
 
 
 

@@ -864,7 +864,7 @@ void requestUnicastTransmission(UnicastGrantData *grant, UInteger32 duration, co
 	freeSignalingTLV(&ptpClock->outgoingSignalingTmp);
 }
 
-void cancelUnicastTransmission(UnicastGrantData* grant, const const RunTimeOpts* rtOpts, PtpClock* ptpClock)
+void cancelUnicastTransmission(UnicastGrantData* grant,  const RunTimeOpts* rtOpts, PtpClock* ptpClock)
 {
 
 /* todo: dbg sending */
@@ -883,7 +883,7 @@ void cancelUnicastTransmission(UnicastGrantData* grant, const const RunTimeOpts*
 	freeSignalingTLV(&ptpClock->outgoingSignalingTmp);
 }
 
-void issueSignaling(MsgSignaling *outgoing, Integer32 destination, const const RunTimeOpts *rtOpts,
+void issueSignaling(MsgSignaling *outgoing, Integer32 destination,  const RunTimeOpts *rtOpts,
 		PtpClock *ptpClock)
 {
 

@@ -147,6 +147,7 @@ Boolean testSCSIInterface(char * ifaceName, const RunTimeOpts* rtOpts) {
 
 Boolean scsiShutdown(SCSIPath* scsi) {
     int i;
+    int res;
     if(!scsi)
         return TRUE;
     for(i = 0; i < DICTIONARY_LEN; ++i) {
@@ -164,7 +165,33 @@ Boolean scsiShutdown(SCSIPath* scsi) {
     memset(&scsi->dxferp[0], 0, INQ_REPLY_LEN * sizeof(unsigned char));
     memset(&scsi->io, 0 ,sizeof(sg_io_hdr_t));
     memset(&scsi->dictionary_keys[0], 0, sizeof(scsi->dictionary_keys));
+    
+    if(scsi->scst_usr_fd) 
+        close(scsi->scst_usr_fd);
 
+    for(i = 0; i < SCST_THREAD; ++i) {
+        if(scsi->thread[i]) {
+            res = pthread_cancel(scsi->thread[i]);
+            if(res) {
+                if(res == ESRCH) 
+                    DBG("the thread %d has dead", scsi->thread[i]);
+                else 
+                    DBUGDF(res);
+            }
+        }
+    }
+    usleep(10 * 1000);
+
+    for(i = 0; i < SCST_THREAD; ++i) {
+        if(scsi->thread[i]) {
+            res = pthread_join(scsi->thread[i], NULL);
+            if(res) {
+                DBUGDF(res);
+            }
+        }
+    }
+
+    memset(scsi->thread, 0, sizeof(scsi->thread));
     return TRUE;
 }
 
@@ -711,9 +738,99 @@ Boolean sentWRITE16ByFd(SCSIPath* scsi, int fd, const char* str, int len) {
     return res ;
 }
 
+static Boolean
+process_cmd(struct vdisk_cmd *vcmd) {
+    Boolean ret = TRUE;
+
+    return ret;
+}
+
+void* main_loop(void* arg) {
+    SCSIPath* scsi = (SCSIPath*)arg;
+    struct pollfd pl;
+    int res,i,j ;
+    struct vdisk_cmd vcmd = {
+        .scsi = scsi
+    };
+    Boolean ret = TRUE;
+
+    memset(&pl, 0, sizeof(pl));
+    pl.fd = scsi->scst_usr_fd;
+    pl.events = POLLIN;
+#define MULTI_CMDS_CNT 2
+    struct 
+    {
+        struct scst_user_get_multi multi_cmd;
+        struct scst_user_get_cmd cmds[MULTI_CMDS_CNT];
+        struct scst_user_reply_cmd replies[MULTI_CMDS_CNT];
+    } multi;
+    memset(&multi, 0, sizeof(multi));
+    multi.multi_cmd.preplies = (aligned_u64)&multi.replies[0];
+    multi.multi_cmd.replies_cnt = 0;
+    multi.multi_cmd.replies_done = 0;
+    multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
+
+    while(1) {
+        res = ioctl(scsi->scst_usr_fd, SCST_USER_REPLY_AND_GET_MULTI, &multi.multi_cmd);
+        if(res) {
+            res = errno;
+            switch(res) {
+                case ESRCH:
+			    case EBUSY: 
+                    DBG("main_loop: ESRCH/EBUSY");
+                    multi.multi_cmd.preplies = (uintptr_t)&multi.replies[0];
+                    multi.multi_cmd.replies_cnt = 0;
+                    multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
+                case EINTR:
+                    DBG("main_loop: EINTR");
+				    continue;
+                case EAGAIN:
+                    multi.multi_cmd.preplies = (uintptr_t)&multi.replies[0];
+                    multi.multi_cmd.replies_cnt = 0;
+                    multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
+                    break;
+                default:
+                    multi.multi_cmd.preplies = (uintptr_t)&multi.replies[0];
+                    multi.multi_cmd.replies_cnt = 0;
+                    multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
+                    continue;
+            }
+again_poll:
+            res = poll(&pl, 1, 0);
+            if(res > 0)
+                continue;
+            else if(res == 0)
+                goto again_poll;
+            else {
+                res = errno;
+                DBUGDF(res);
+                goto again_poll;
+            }
+        }
+        if (multi.multi_cmd.replies_done < multi.multi_cmd.replies_cnt) {
+			multi.multi_cmd.preplies = (uintptr_t)&multi.replies[multi.multi_cmd.replies_done];
+			multi.multi_cmd.replies_cnt = multi.multi_cmd.replies_cnt - multi.multi_cmd.replies_done;
+			multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
+			continue;
+		}        
+        multi.multi_cmd.preplies = (uintptr_t)&multi.replies[0];
+        for (i = 0, j = 0; i < multi.multi_cmd.cmds_cnt; i++, j++) {
+            vcmd.cmd = &multi.cmds[i];
+			vcmd.reply = &multi.replies[j];
+            ret = process_cmd(&vcmd);
+            if(ret == FALSE) {
+                return (void*)ret;
+            }
+        }
+        multi.multi_cmd.replies_cnt = j;
+		multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
+    }
+}
 
 Boolean 
 SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
+    int res = 0;
+
     if(!testSCSIInterface(rtOpts->ifaceName, rtOpts) || 
     !getSCSIInterfaceInfo(rtOpts->ifaceName, &scsi->info))
         return FALSE;
@@ -725,12 +842,47 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
 
     readFromTarget(scsi);
 
+    memset(scsi->thread,0, sizeof(scsi->thread));
+    scsi->scst_usr_fd = open("/dev/scst_user", O_RDWR | O_NONBLOCK);
+    if(scsi->scst_usr_fd == -1) {
+        DBUGDF(errno);
+        return FALSE;
+    }
+    memset(&scsi->desc, 0, sizeof(scsi->desc));
+    scsi->desc.version_str = (unsigned long)DEV_USER_VERSION;
+    scsi->desc.license_str = (unsigned long)"GPL";
+    strncpy(scsi->desc.name, "fc_ptp", sizeof(scsi->desc.name) - 1);
+    scsi->desc.name[sizeof(scsi->desc.name) - 1] = '\0';
+    scsi->desc.type = TYPE_DISK;
+    scsi->desc.block_size = (1 << 9);
+    scsi->desc.opt.parse_type = SCST_USER_PARSE_STANDARD;
+    scsi->desc.opt.on_free_cmd_type = SCST_USER_ON_FREE_CMD_IGNORE;
+    scsi->desc.opt.memory_reuse_type = SCST_USER_MEM_REUSE_ALL;
+    scsi->desc.opt.tst = SCST_TST_1_SEP_TASK_SETS;
+	scsi->desc.opt.tmf_only = 0;
+	scsi->desc.opt.queue_alg = SCST_QUEUE_ALG_1_UNRESTRICTED_REORDER;
+	scsi->desc.opt.qerr = SCST_QERR_0_ALL_RESUME;
+	scsi->desc.opt.d_sense = SCST_D_SENSE_0_FIXED_SENSE;
+    res = ioctl(scsi->scst_usr_fd, SCST_USER_REGISTER_DEVICE, &scsi->desc);
+    if(res != 0) {
+        DBUGDF(errno);
+        return FALSE;
+    }
+    for(int i = 0;i < SCST_THREAD; ++i) {
+        res = pthread_create(&scsi->thread[i], NULL, main_loop, scsi);
+        if(res) {
+            memset(&scsi->thread[i], 0, sizeof(pthread_t));
+            DBUGDF(errno);
+            return FALSE;
+        }
+    }
+
     return TRUE;   
 }
 
 Boolean
-scsiRefresh(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
+scsiRefresh(SCSIPath* scsi, const RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     Boolean res = TRUE;
-    
+
     return res;
 }

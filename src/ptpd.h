@@ -21,7 +21,7 @@
 #ifdef HAVE_CONFIG_H
 # include <config.h>
 #endif /* HAVE_CONFIG_H */
-
+#include <pthread.h>
 
 #ifdef linux
 #	ifndef _GNU_SOURCE
@@ -125,7 +125,7 @@
 #if defined(linux) && defined(HAVE_SCHED_H)
 #include <sched.h>
 #endif /* linux && HAVE_SCHED_H */
-
+#include <scst_user.h>
 #ifdef HAVE_SYS_CPUSET_H
 #include <sys/cpuset.h>
 #endif /* HAVE_SYS_CPUSET_H */

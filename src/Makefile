@@ -279,7 +279,9 @@ AUTOMAKE = ${SHELL} /home/xgb/ptpd-ptpd.2.3.1/build-aux/missing automake-1.16
 AWK = mawk
 CC = gcc
 CCDEPMODE = depmode=gcc3
-CFLAGS = -g -O2 -ggdb -O0 -DSDEBUG -g -D__USE_GNU
+CFLAGS = -g -O2 -ggdb -O0 -DSDEBUG -g -D__USE_GNU \
+	-I$(SCST_ITF_VER_DIR) -D_GNU_SOURCE -D__USE_FILE_OFFSET64 \
+	-D__USE_LARGEFILE64 -pthread -DPTPD_DBG -DRUNTIME_DEBUG
 CPP = gcc -E
 CPPFLAGS = 
 CYGPATH_W = echo
@@ -419,6 +421,8 @@ AM_CPPFLAGS = $(SNMP_CPPFLAGS) $(PCAP_CPPFLAGS) $(PTP_DBL) \
 	$(PTP_UNICAST_MAX) $(PTP_DISABLE_SOTIMESTAMPING)
 AM_LDFLAGS = $(SNMP_LIBS) $(PCAP_LIBS)
 NULL = 
+SCST_ITF_VER_DIR := /usr/local/include/scst
+
 #VERSION = 2.3.1
 #SHAREDLIBVER = $(SHAREDLIB).$(VERSION)
 #	ptp_timers.c			

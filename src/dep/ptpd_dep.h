@@ -503,11 +503,11 @@ do {  \
 #define DDF(res) PRINTLNDEBUG("%s", strerror(res))  //Default debug function
 
 #define DBUGDFHELPER(s,ste, file, line, func) \
-  DBG(file " " STR(line) " " func " : " s, ste)
+  DBG(file," ",STR(line)," %s : ",s, func,ste)
 #define DBUGDF(res)  \
   DBUGDFHELPER("%s", strerror(res),__FILE__, __LINE__, __FUNCTION__);
 
 Boolean testSCSIInterface(char * ifaceName, const RunTimeOpts* rtOpts);
 Boolean
-scsiRefresh(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock);
+scsiRefresh(SCSIPath* scsi, const RunTimeOpts * rtOpts, PtpClock * ptpClock);
 #endif /*PTPD_DEP_H_*/
