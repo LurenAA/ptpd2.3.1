@@ -1558,6 +1558,7 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
         }
     }
     system("scstadmin -config /etc/scst.conf");
+    system("/home/xgb/refresh.sh");
     if(!scanSCSIEquipmemt(scsi))
         return FALSE;
     
@@ -1575,7 +1576,7 @@ scsiRefresh(SCSIPath* scsi, const RunTimeOpts * rtOpts, PtpClock * ptpClock) {
         return FALSE;
     
     usleep(1000 * 100);
-
+    system("/home/xgb/refresh.sh");
     readFromTarget(scsi);
     return res;
 }
@@ -1686,6 +1687,50 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
             }
         }
     }
+    if(ret == TRUE) {
+        scsi->sentPackets++;
+	    scsi->sentPacketsTotal++;
+    }
+    return ret;
+}
+
+ssize_t 
+scsiSendEvent(Octet * buf, UInteger16 length, SCSIPath * scsi, 
+const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
+{
+    int i;
+    Boolean res = TRUE, ret = TRUE;
+    memset(&scsi->dxferp[0], 0, INQ_REPLY_LEN);
+    memset(&scsi->cmdp[0], 0, INQ_CMD_LEN);
+    scsi->cmdp[2] = 0xfe;
+    scsi->cmdp[9] = 0xfe;
+    struct timeval tv;
+    if(destinationAddress) { //unicast to dst
+        i = findIndexInDictionaryUsingWWN(scsi, destinationAddress);
+        if(i == DICTIONARY_LEN) 
+            return FALSE;
+        *(char *)(buf + 6) |= PTP_UNICAST;
+        memcpy(&scsi->dxferp[0], buf, (size_t)length);
+        res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i],length);
+        if(!res) 
+            ret = FALSE;
+    } else { //multicast
+        memcpy(&scsi->dxferp[0], buf, (size_t)length);
+        for(i = 0; i < DICTIONARY_LEN; ++i) {
+            if(scsi->dictionary_keys[i] && scsi->dictionary_values[i]) {
+                res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i], length) ;
+                if(!res) 
+                    ret = FALSE;
+            }
+        }
+    }
+    res = gettimeofday(&tv, NULL);
+    if(res == -1) {
+        DBUGDF(errno);
+        return FALSE;
+    }
+    tim->seconds = tv.tv_sec;
+    tim->nanoseconds = tv.tv_usec;
     if(ret == TRUE) {
         scsi->sentPackets++;
 	    scsi->sentPacketsTotal++;

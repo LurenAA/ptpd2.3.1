@@ -52,6 +52,17 @@
  */
 
 #include "ptpd.h"
+void 
+SCSIhandle(const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+ssize_t 
+scsiSendEvent(Octet * buf, UInteger16 length, SCSIPath * scsi, 
+const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim);
+static uint64_t
+lookupSyncIndexSCSI(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntry *index);
+static TimeInternal
+issueSyncSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
+static void 
+issueAnnounceSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
 void
 handleSignalingSCSI(MsgHeader *header,Boolean isFromSelf, uint64_t sourceAddress, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
 static void
@@ -175,6 +186,28 @@ indexSync(TimeInternal *timeStamp, UInteger16 sequenceId, Integer32 transportAdd
 
 }
 
+static void
+indexSyncSCSI(TimeInternal *timeStamp, UInteger16 sequenceId, uint64_t transportAddressSCSI, SyncDestEntry *index)
+{
+
+    uint32_t hash = 0;
+
+    if(timeStamp == NULL || index == NULL) {
+	return;
+    }
+
+    hash = fnvHash(timeStamp, sizeof(TimeInternal), UNICAST_MAX_DESTINATIONS);
+
+    if(index[hash].transportAddressSCSI) {
+	// DBG("indexSync: hash collision - clearing entry %s:%04x\n", inet_ntoa(tmpAddr), hash);
+	index[hash].transportAddressSCSI = 0;
+    } else {
+	// DBG("indexSync: indexed successfully %s:%04x\n", inet_ntoa(tmpAddr), hash);
+	index[hash].transportAddressSCSI = transportAddressSCSI;
+    }
+
+}
+
 #endif /* PTPD_SLAVE_ONLY */
 
 /* sync destination index lookup */
@@ -198,6 +231,31 @@ lookupSyncIndex(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntry *i
 	DBG("lookupSyncIndex: cache hit - clearing old entry\n");
 	previousAddress =  index[hash].transportAddress;
 	index[hash].transportAddress = 0;
+	return previousAddress;
+    }
+
+}
+
+static uint64_t
+lookupSyncIndexSCSI(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntry *index)
+{
+
+    uint32_t hash = 0;
+    uint64_t previousAddress;
+
+    if(timeStamp == NULL || index == NULL) {
+	return 0;
+    }
+
+    hash = fnvHash(timeStamp, sizeof(TimeInternal), UNICAST_MAX_DESTINATIONS);
+
+    if(index[hash].transportAddressSCSI == 0) {
+	DBG("lookupSyncIndex: cache miss\n");
+	return 0;
+    } else {
+	DBG("lookupSyncIndex: cache hit - clearing old entry\n");
+	previousAddress =  index[hash].transportAddressSCSI;
+	index[hash].transportAddressSCSI = 0;
 	return previousAddress;
     }
 
@@ -785,8 +843,10 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	case PTP_SLAVE:
 	// passive mode behaves like the SLAVE state, in order to wait for the announce timeout of the current active master
 	case PTP_PASSIVE:
-		handle(rtOpts, ptpClock);
-		
+		if(rtOpts->transport != SCSI_FC)
+			handle(rtOpts, ptpClock);
+		else if(rtOpts->transport == SCSI_FC)
+			SCSIhandle(rtOpts, ptpClock);
 		/*
 		 * handle SLAVE timers:
 		 *   - No Announce message was received
@@ -1107,7 +1167,10 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		}
 
 		// TODO: why is handle() below expiretimer, while in slave is the opposite
-		handle(rtOpts, ptpClock);
+		if(rtOpts->transport != SCSI_FC)
+			handle(rtOpts, ptpClock);
+		else if (rtOpts->transport == SCSI_FC)
+			SCSIhandle(rtOpts, ptpClock);
 
 		if (ptpClock->slaveOnly || ptpClock->clockQuality.clockClass == SLAVE_ONLY_CLOCK_CLASS)
 			toState(PTP_LISTENING, rtOpts, ptpClock);
@@ -1116,7 +1179,10 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 #endif /* PTPD_SLAVE_ONLY */
 
 	case PTP_DISABLED:
-		handle(rtOpts, ptpClock);
+		if(rtOpts->transport != SCSI_FC)
+			handle(rtOpts, ptpClock);
+		else if(rtOpts->transport == SCSI_FC)
+			SCSIhandle(rtOpts,ptpClock);
 		break;
 		
 	default:
@@ -3615,7 +3681,10 @@ issueAnnounce(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 
 	/* send Announce to Ethernet or multicast */
 	if(rtOpts->transport == IEEE_802_3 || (rtOpts->ipMode != IPMODE_UNICAST)) {
-		issueAnnounceSingle(dst, &ptpClock->sentAnnounceSequenceId, rtOpts, ptpClock);
+		if(rtOpts->transport != SCSI_FC)
+			issueAnnounceSingle(dst, &ptpClock->sentAnnounceSequenceId, rtOpts, ptpClock);
+		else if(rtOpts->transport == SCSI_FC)
+			issueAnnounceSingleSCSI(0, &ptpClock->sentAnnounceSequenceId, rtOpts, ptpClock);
 	/* send Announce to unicast destination(s) */
 	} else {
 	    /* send to granted only */
@@ -3649,6 +3718,23 @@ issueAnnounce(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 
 }
 
+static void 
+issueAnnounceSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock)
+{
+	msgPackAnnounce(ptpClock->msgObuf, *sequenceId,ptpClock);
+
+	if (!scsiSendGeneral(ptpClock->msgObuf,ANNOUNCE_LENGTH,
+			    &ptpClock->SCSIPath, rtOpts, dst)) {
+		    toState(PTP_FAULTY,rtOpts,ptpClock);
+		    ptpClock->counters.messageSendErrors++;
+		    DBGV("Announce message can't be sent -> FAULTY state \n");
+	} else {
+		    DBGV("Announce MSG sent ! \n");
+		    (*sequenceId)++;
+		    ptpClock->counters.announceMessagesSent++;
+	}
+}
+
 /* send single announce to a single destination */
 static void 
 issueAnnounceSingle(Integer32 dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock)
@@ -3679,8 +3765,11 @@ issueSync(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 
 	/* send Sync to Ethernet or multicast */
 	if(rtOpts->transport == IEEE_802_3 || (rtOpts->ipMode != IPMODE_UNICAST)) {
-		(void)issueSyncSingle(dst, &ptpClock->sentSyncSequenceId, rtOpts, ptpClock);
+		if(rtOpts->transport != SCSI_FC)
+			(void)issueSyncSingle(dst, &ptpClock->sentSyncSequenceId, rtOpts, ptpClock);
+		else if (rtOpts->transport == SCSI_FC) {
 
+		}
 	/* send Sync to unicast destination(s) */
 	} else {
 	    for(i = 0; i < UNICAST_MAX_DESTINATIONS; i++) {
@@ -3722,6 +3811,69 @@ issueSync(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 		}
 	}
 
+}
+
+static TimeInternal
+issueSyncSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock)
+{
+	Timestamp originTimestamp;
+	TimeInternal internalTime, now;
+
+	getTime(&internalTime);
+
+	if (respectUtcOffset(rtOpts, ptpClock) == TRUE) {
+		internalTime.seconds += ptpClock->timePropertiesDS.currentUtcOffset;
+	}
+
+	/* 
+         * LEAPNOTE01#
+         * This is done here rather than in netSendEvent because we must also
+         * prevent sequence IDs from incrementing so that there's no discontinuity.
+         * Ideally netSendEvent should be incrementing the sequence numbers,
+         * then this could be centrally blocked, but then again this makes
+         * netSendEvent less generic - on the other end in 2.4 this will be 
+         * a glue function for libcck transports, so this will be fine.
+	 * In other words, ptpClock->netSendEvent() will be a function pointer.
+	 * What was I talking about? Yes, right, sequence numbers can be 
+         * incremented in netSendEvent.
+	 */
+
+	if(ptpClock->leapSecondInProgress) {
+		DBG("Leap second in progress - will not send SYNC\n");
+		clearTime(&internalTime);
+		return internalTime;
+	}
+
+	fromInternalTime(&internalTime,&originTimestamp);
+
+	now = internalTime;
+
+	msgPackSync(ptpClock->msgObuf,*sequenceId,&originTimestamp,ptpClock);
+
+	if (!scsiSendEvent(ptpClock->msgObuf,SYNC_LENGTH,&ptpClock->SCSIPath,
+		rtOpts, dst, &internalTime)) {
+		toState(PTP_FAULTY,rtOpts,ptpClock);
+		ptpClock->counters.messageSendErrors++;
+		DBGV("Sync message can't be sent -> FAULTY state \n");
+	} else {
+
+		DBGV("Sync MSG sent ! \n");
+
+		ptpClock->lastSyncDstSCSI = dst;
+
+		if(!internalTime.seconds && !internalTime.nanoseconds) {
+		    internalTime = now;
+		}
+
+		/* index the Sync destination */
+		indexSyncSCSI(&internalTime, *sequenceId, dst, ptpClock->syncDestIndex);
+
+		(*sequenceId)++;
+		ptpClock->counters.syncMessagesSent++;
+
+	}
+
+    return internalTime;
 }
 
 /*Pack and send a single Sync message, return the embedded timestamp*/

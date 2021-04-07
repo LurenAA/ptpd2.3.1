@@ -679,6 +679,7 @@ typedef struct {
 
 typedef struct {
     Integer32 transportAddress;
+	uint64_t transportAddressSCSI;
 } SyncDestEntry;
 
 /**
@@ -965,6 +966,7 @@ typedef struct {
 	Boolean addOffset;
 #endif
 	uint64_t lastPdelayRespDstSCSI;
+	uint64_t lastSyncDstSCSI;
 } PtpClock;
 
 /**
