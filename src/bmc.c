@@ -84,7 +84,7 @@ void initData(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		ptpClock->clockIdentity[0] = 0xFF;
 		ptpClock->clockIdentity[1] = 0x04; //scsi
 		for(i = 2; i < CLOCK_IDENTITY_LENGTH; ++i) {
-				ptpClock->clockIdentity[i]= (ptpClock->SCSIPath.info.wwn & (0xFF << j));
+				ptpClock->clockIdentity[i]= ((ptpClock->SCSIPath.info.wwn >> (8 * j))& (0xFF));
 				++j;
 		}
 	}

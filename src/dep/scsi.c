@@ -2,6 +2,227 @@
 #include "../ptpd.h"
 #include <unistd.h>
 
+#ifdef SDEBUG
+static const char * scsi_opcode_string[] = {
+    "TEST_UNIT_READY      ",
+   "REZERO_UNIT           ",
+   "REQUEST_SENSE         ",
+   "FORMAT_UNIT           ",
+   "READ_BLOCK_LIMITS     ",
+   "REASSIGN_BLOCKS       ",
+   "READ_6                ",
+   "WRITE_6               ",
+   "SEEK_6                ",
+   "READ_REVERSE          ",
+   "WRITE_FILEMARKS       ",
+   "SPACE                 ",
+   "INQUIRY               ",
+   "RECOVER_BUFFERED_DATA ",
+   "MODE_SELECT           ",
+   "RESERVE               ",
+   "RELEASE               ",
+   "COPY                  ",
+   "ERASE                 ",
+   "MODE_SENSE            ",
+   "START_STOP            ",
+   "RECEIVE_DIAGNOSTIC    ",
+   "SEND_DIAGNOSTIC       ",
+   "ALLOW_MEDIUM_REMOVA  ", 
+   "SET_WINDOW            ",
+   "READ_CAPACITY         ",
+   "READ_10               ",
+   "WRITE_10              ",
+   "SEEK_10               ",
+   "WRITE_VERIFY          ",
+   "VERIFY                ",
+   "SEARCH_HIGH           ",
+   "SEARCH_EQUAL          ",
+   "SEARCH_LOW            ",
+   "SET_LIMITS            ",
+   "PRE_FETCH             ",
+   "READ_POSITION         ",
+   "SYNCHRONIZE_CACHE     ",
+   "LOCK_UNLOCK_CACHE     ",
+   "READ_DEFECT_DATA      ",
+   "MEDIUM_SCAN           ",
+   "COMPARE               ",
+   "COPY_VERIFY           ",
+   "WRITE_BUFFER          ",
+   "READ_BUFFER           ",
+   "UPDATE_BLOCK          ",
+   "READ_LONG             ",
+   "WRITE_LONG            ",
+   "CHANGE_DEFINITION     ",
+   "WRITE_SAME            ",
+   "READ_TOC              ",
+   "LOG_SELECT            ",
+   "LOG_SENSE             ",
+   "MODE_SELECT_10        ",
+   "RESERVE_10            ",
+   "RELEASE_10            ",
+   "MODE_SENSE_10         ",
+   "PERSISTENT_RESERVE_IN ",
+   "PERSISTENT_RESERVE_OUT",
+   "MOVE_MEDIUM           ",
+   "READ_12               ",
+   "WRITE_12              ",
+   "WRITE_VERIFY_12       ",
+   "SEARCH_HIGH_12        ",
+   "SEARCH_EQUAL_12       ",
+   "SEARCH_LOW_12         ",
+   "READ_ELEMENT_STATUS   ",
+   "SEND_VOLUME_TAG       ",
+   "WRITE_LONG_2",
+   "READ_16               ",
+   "WRITE_16              ",
+   "VERIFY_16	         ", 
+   "REPORT_LUNS           ",
+   "WRITE_SAME_16	     ", 
+   "EXTENDED_COPY	     ", 
+   "RECEIVE_COPY_RESULTS  ",
+   "SYNCHRONIZE_CACHE_16  " 
+};
+
+static unsigned int scsi_opcode[] = {
+0x00,
+0x01,
+0x03,
+0x04,
+0x05,
+0x07,
+0x08,
+0x0a,
+0x0b,
+0x0f,
+0x10,
+0x11,
+0x12,
+0x14,
+0x15,
+0x16,
+0x17,
+0x18,
+0x19,
+0x1a,
+0x1b,
+0x1c,
+0x1d,
+0x1e,
+0x24,
+0x25,
+0x28,
+0x2a,
+0x2b,
+0x2e,
+0x2f,
+0x30,
+0x31,
+0x32,
+0x33,
+0x34,
+0x34,
+0x35,
+0x36,
+0x37,
+0x38,
+0x39,
+0x3a,
+0x3b,
+0x3c,
+0x3d,
+0x3e,
+0x3f,
+0x40,
+0x41,
+0x43,
+0x4c,
+0x4d,
+0x55,
+0x56,
+0x57,
+0x5a,
+0x5e,
+0x5f,
+0xa5,
+0xa8,
+0xaa,
+0xae,
+0xb0,
+0xb1,
+0xb2,
+0xb8,
+0xb6,
+0xea,
+0x88,
+0x8a,
+0x8f,
+0xa0,
+0x93,
+0x83,
+0x84,
+0x91
+};
+#endif
+
+static void 
+set_resp_data_len(struct vdisk_cmd *vcmd, int32_t resp_data_len)
+{
+	struct scst_user_scsi_cmd_reply_exec *reply = &vcmd->reply->exec_reply;
+
+	if (vcmd->may_need_to_free_pbuf && (resp_data_len == 0)) {
+		struct scst_user_scsi_cmd_exec *cmd = &vcmd->cmd->exec_cmd;
+		free((void *)(unsigned long)cmd->pbuf);
+		cmd->pbuf = 0;
+		reply->pbuf = 0;
+	}
+
+	reply->resp_data_len = resp_data_len;
+
+	return;
+}
+
+static int set_sense(uint8_t *buffer, int len, int key, int asc, int ascq)
+{
+	int res = 18;
+
+	memset(buffer, 0, res);
+
+	buffer[0] = 0x70;	/* Error Code			*/
+	buffer[2] = key;	/* Sense Key			*/
+	buffer[7] = 0x0a;	/* Additional Sense Length	*/
+	buffer[12] = asc;	/* ASC				*/
+	buffer[13] = ascq;	/* ASCQ				*/
+
+	return res;
+}
+
+static
+void set_cmd_error_status(struct vdisk_cmd *vcmd, int status) {
+    struct scst_user_scsi_cmd_reply_exec *reply = &vcmd->reply->exec_reply;
+	reply->status = status;
+    set_resp_data_len(vcmd, 0);
+
+    return ;
+}
+
+static void 
+set_cmd_error(struct vdisk_cmd *vcmd, int key, int asc, int ascq)
+{
+	struct scst_user_scsi_cmd_reply_exec *reply = &vcmd->reply->exec_reply;
+
+	set_cmd_error_status(vcmd, SAM_STAT_CHECK_CONDITION);
+	reply->sense_len = set_sense(vcmd->sense, sizeof(vcmd->sense), key,
+		asc, ascq);
+	reply->psense_buffer = (unsigned long)vcmd->sense;
+
+	return;
+}
+
+static
+void set_busy(struct vdisk_cmd* vcmd) {
+    set_cmd_error_status(vcmd, SAM_STAT_TASK_SET_FULL);
+    return ;
+}
 
 static
 Boolean isEndInSlash(const char* str) {
@@ -148,6 +369,7 @@ Boolean testSCSIInterface(char * ifaceName, const RunTimeOpts* rtOpts) {
 Boolean scsiShutdown(SCSIPath* scsi) {
     int i;
     int res;
+    SCSIREC* recv = NULL, *recv1 = NULL;
     if(!scsi)
         return TRUE;
     for(i = 0; i < DICTIONARY_LEN; ++i) {
@@ -190,8 +412,20 @@ Boolean scsiShutdown(SCSIPath* scsi) {
             }
         }
     }
+    res = pthread_mutex_destroy(&scsi->mutex);
+    if(res) {
+        DBUGDF(errno);
+        return FALSE;
+    }
+    recv = scsi->recv;
+    while(recv != NULL) {
+        recv1 = recv->next;
+        free((void*)recv);
+        recv = recv1;
+    }
 
     memset(scsi->thread, 0, sizeof(scsi->thread));
+    memset(scsi->tgt_devs, 0 , sizeof(scsi->tgt_devs));
     return TRUE;
 }
 
@@ -537,6 +771,24 @@ sentINQUIRYByFd(SCSIPath* scsi, int fd) {
     return TRUE;
 }
 
+
+//user initialize cmdp before call this function
+static Boolean
+sentWRITE16ByFd(SCSIPath* scsi, int fd, UInteger16 len) {
+    int i = 0;
+    // memset(scsi->cmdp, 0, INQ_CMD_LEN);
+    scsi->cmdp[0] = 0x8A;
+    // scsi->cmdp[13] = 1;
+    for(; i < 2; ++i) {
+        scsi->cmdp[13 - i] = (0xff & (len >> (i * 8)));
+    }
+    
+    if(!sendSCSICommandByFd(scsi, fd, SG_DXFER_TO_DEV, 16))
+        return FALSE;
+
+    return TRUE;
+}
+
 //初始化sg_io
 static Boolean initAllAboutSg(SCSIPath* scsi) {
     Boolean res = TRUE;
@@ -688,10 +940,30 @@ parseINQUIRY(SCSIPath* scsi, int fd) {
 }
 
 static
+Boolean sendWWNtoDev(SCSIPath* scsi, int fd) {
+    Boolean res = TRUE;
+    int len = 0;
+    memset(&scsi->cmdp[0], 0, INQ_CMD_LEN);
+    memset(&scsi->dxferp[0], 0, INQ_REPLY_LEN);
+    scsi->cmdp[2] = 0xff;
+    scsi->cmdp[9] = 0xff;
+    len = snprintf(NULL,0,"%lu",scsi->info.wwn);
+    if(len <= 0) {
+        DBUGDF(errno);
+        return FALSE;
+    }
+    len = snprintf((char*)&scsi->dxferp[0], len, "%lu",scsi->info.wwn);
+    res = sentWRITE16ByFd(scsi, fd, len);
+    return res;
+}
+
+static
 Boolean processInformation(SCSIPath* scsi, int fd) {
     Boolean res = TRUE;
-    if(memcmp(&scsi->dxferp[18], WWN_INQ_ID, 6) == 0)
+    if(memcmp(&scsi->dxferp[18], WWN_INQ_ID, 6) == 0) {
         parseINQUIRY(scsi, fd);
+        return sendWWNtoDev(scsi, fd);
+    }
 
     return res;
 }
@@ -715,33 +987,444 @@ Boolean readFromTarget(SCSIPath* scsi) {
     return TRUE;
 }
 
-Boolean sentWRITE16ByFd(SCSIPath* scsi, int fd, const char* str, int len) {
+// Boolean sentWRITE16ByFd(SCSIPath* scsi, int fd, const char* str, int len) {
+//     Boolean res = TRUE;
+//     if(!scsi || !str || len <= 0) {
+//         DBUGDF(EINVAL);
+//         return FALSE;
+//     }
+//     if(len > sizeof(scsi->dxferp)) {
+//         DBUGDF(E2BIG);
+//         return FALSE;
+//     }
+
+//     memset(&scsi->cmdp[0], 0, INQ_CMD_LEN);
+//     scsi->cmdp[0] = 0x8A;
+//     scsi->cmdp[13] = INQ_REPLY_LEN / 512;
+
+//     memset(&scsi->dxferp[0], 0, INQ_REPLY_LEN);
+//     memcpy(&scsi->dxferp[0], str, len); 
+
+//     res = sendSCSICommandByFd(scsi, fd, SG_DXFER_TO_DEV, 16);
+
+//     return res ;
+// }
+
+static 
+struct vdisk_tgt_dev *find_tgt_dev(SCSIPath* scsi, uint64_t sess_h) {
+    unsigned int i;
+    struct vdisk_tgt_dev* res = NULL;
+    for(i = 0; i < ARRAY_SIZE(scsi->tgt_devs); ++i) {
+        if(scsi->tgt_devs[i].sess_h == sess_h) {
+            res = &scsi->tgt_devs[i];
+            break;
+        }
+    }
+    return res;
+}
+
+static struct vdisk_tgt_dev *
+find_empty_tgt_dev(SCSIPath* scsi)  {
+    return find_tgt_dev(scsi, 0);
+}
+
+static 
+Boolean do_sess(struct vdisk_cmd* vcmd) {
+    Boolean res =  TRUE;
+    struct scst_user_get_cmd *cmd = vcmd->cmd;
+    struct scst_user_reply_cmd *reply = vcmd->reply;
+    struct vdisk_tgt_dev *tgt_dev;
+    
+    tgt_dev = find_tgt_dev(vcmd->scsi, cmd->sess.sess_h);
+    if (cmd->subcode == SCST_USER_ATTACH_SESS) {
+        if (tgt_dev != NULL) {
+            DBUGDF(EEXIST);
+            res = FALSE;
+            goto reply;
+        }
+        tgt_dev = find_empty_tgt_dev(vcmd->scsi);
+        if(tgt_dev == NULL) {
+            DBUGDF(ENOMEM);
+            res = FALSE;
+            goto reply;
+        }
+        tgt_dev->sess_h = cmd->sess.sess_h;
+    } else {
+        if(tgt_dev == NULL) {
+            DBUGDF(ESRCH);
+            res = FALSE;
+            goto reply;
+        }
+        tgt_dev->sess_h = 0;
+    }
+reply:
+    memset(reply, 0, sizeof(*reply));
+	reply->cmd_h = cmd->cmd_h;
+	reply->subcode = cmd->subcode;
+	reply->result = res;  
+
+	return res;
+}
+
+static Boolean
+do_parse(struct vdisk_cmd *vcmd) {
+    Boolean ret = FALSE;
+    struct scst_user_scsi_cmd_parse *cmd = &vcmd->cmd->parse_cmd;
+	struct scst_user_scsi_cmd_reply_parse *reply = &vcmd->reply->parse_reply;
+
+    memset(reply, 0, sizeof(*reply));
+	vcmd->reply->cmd_h = vcmd->cmd->cmd_h;
+	vcmd->reply->subcode = vcmd->cmd->subcode;
+    if (cmd->expected_values_set == 0) {
+		reply->bufflen = -1; /* invalid value */
+		return FALSE;
+	}
+
+    reply->queue_type = cmd->queue_type;
+	reply->data_direction = cmd->expected_data_direction;
+	reply->lba = cmd->lba;
+	reply->data_len = cmd->expected_transfer_len;
+	reply->bufflen = cmd->expected_transfer_len;
+	reply->out_bufflen = cmd->expected_out_transfer_len;
+	reply->cdb_len = cmd->cdb_len;
+    
+    if (cmd->op_flags & SCST_INFO_VALID)
+		reply->op_flags = cmd->op_flags;
+	else {
+		if (reply->data_direction & SCST_DATA_WRITE)
+			reply->op_flags |= SCST_WRITE_MEDIUM;
+		reply->op_flags |= SCST_INFO_VALID;
+	}
+
+    return ret;
+}
+
+static
+void* align_alloc(size_t size ) {
+    static long page_size;
+    assert(size > 0);
+    if(page_size == 0) {
+        page_size = sysconf(_SC_PAGE_SIZE);
+        assert(page_size >= 1);
+    }
+    void* memptr = NULL;
+    int res = posix_memalign(&memptr, page_size, size);
+    if(res) {
+        res = errno;
+        DBUGDF(res);
+    }
+    return memptr;
+}
+
+static Boolean 
+do_alloc_mem(struct vdisk_cmd *vcmd) {
+    struct scst_user_get_cmd *cmd = vcmd->cmd;
+	struct scst_user_reply_cmd *reply = vcmd->reply;
+	Boolean res = TRUE;
+
+    memset(reply, 0, sizeof(*reply));
+	reply->cmd_h = cmd->cmd_h;
+	reply->subcode = cmd->subcode;
+
+    reply->alloc_reply.pbuf = (unsigned long)align_alloc(cmd->alloc_cmd.alloc_len);
+    if (reply->alloc_reply.pbuf == 0) {
+        DBG("Unable to allocate buffer (len %d)",cmd->alloc_cmd.alloc_len);
+    }
+    return res;
+}
+
+static Boolean
+do_on_free_cmd(struct vdisk_cmd *vcmd) {
+    struct scst_user_get_cmd *cmd = vcmd->cmd;
+	struct scst_user_reply_cmd *reply = vcmd->reply;
+	Boolean res = TRUE;
+
+    if (!cmd->on_free_cmd.buffer_cached && (cmd->on_free_cmd.pbuf != 0)) {
+		free((void *)(unsigned long)cmd->on_free_cmd.pbuf);
+	}
+
+    memset(reply, 0, sizeof(*reply));
+	reply->cmd_h = cmd->cmd_h;
+	reply->subcode = cmd->subcode;
+
+	return res;
+}
+
+static Boolean 
+do_cached_mem_free(struct vdisk_cmd *vcmd) {
+    struct scst_user_get_cmd *cmd = vcmd->cmd;
+	struct scst_user_reply_cmd *reply = vcmd->reply;
+	Boolean res = TRUE;
+
+    free((void *)(unsigned long)cmd->on_cached_mem_free.pbuf);
+
+	memset(reply, 0, sizeof(*reply));
+	reply->cmd_h = cmd->cmd_h;
+	reply->subcode = cmd->subcode;
+
+	return res;
+}
+
+static Boolean
+do_tm(struct vdisk_cmd *vcmd, int done){
+    struct scst_user_get_cmd *cmd = vcmd->cmd;
+	struct scst_user_reply_cmd *reply = vcmd->reply;
+	Boolean res = TRUE;
+
+    memset(reply, 0, sizeof(*reply));
+	reply->cmd_h = cmd->cmd_h;
+	reply->subcode = cmd->subcode;
+	reply->result = 0;
+
+    return res;
+}
+/**
+ *  cdb[9] == 0xff && cdb[2] == 0xff  master -> slave  wwn
+ *  cdb[9] == 0xfe && dfb[2] == 0xfe  ptpd
+ **/ 
+static void exec_write(struct vdisk_cmd *vcmd) {
+    struct scst_user_scsi_cmd_exec *cmd = &vcmd->cmd->exec_cmd;
+    uint8_t *cdb = cmd->cdb;
+    char* pbuf = (char*)cmd->pbuf;
+    int res;
+    SCSIPath* scsi = vcmd->scsi;
+
+    if(cdb[2] == 0xfe && cdb[9] == 0xfe) {  //ptp
+        SCSIREC* recv;
+        struct timeval time;
+        Boolean isEvent = (((pbuf[0] & 0x0f) < 4) && ((pbuf[0] & 0x0f) >= 0));
+        uint16_t length = pbuf[13] + (pbuf[12] << 8); 
+
+        if(isEvent) {
+            res = gettimeofday(&time, NULL);
+            if(res)  {
+                res = errno;
+                DBUGDF(res);
+                return ;
+            }
+        }
+
+        res = pthread_mutex_lock(&scsi->mutex);
+        if(res) {
+            res = errno;
+            DBUGDF(res);
+            return ;
+        }
+        recv = scsi->recv;
+        while(recv != NULL) {
+            if(recv->busy == FALSE || recv->next == NULL) {
+                break;
+            }
+            recv = recv->next;
+        }
+        if(recv == NULL || (recv->next == NULL && recv->busy == TRUE)) {
+            if(recv == NULL) {
+                scsi->recv = (SCSIREC*)malloc(sizeof(SCSIREC));
+                recv = scsi->recv;
+            } else {
+                recv->next = (SCSIREC*)malloc(sizeof(SCSIREC));
+                recv = recv->next;
+            }
+        }
+        memset(recv, 0, sizeof(SCSIREC) - sizeof(struct a *));
+        recv->busy = TRUE;
+        if(isEvent) {
+            recv->time.tv_sec = time.tv_sec;
+            recv->time.tv_usec = time.tv_usec;
+            recv->isEvent = TRUE;
+            scsi->recv_event++;
+        } else {
+            recv->isEvent = FALSE;
+            scsi->recv_general++;
+        }
+        struct vdisk_tgt_dev* dev = find_tgt_dev(scsi, vcmd->cmd->exec_cmd.sess_h);
+        recv->wwn = dev->wwn;
+        recv->length = length;
+        recv->next = NULL;
+        memcpy(recv->buf, pbuf, length);
+
+        
+        res = pthread_mutex_unlock(&scsi->mutex);
+        if(res) {
+            res = errno;
+            DBUGDF(res);
+            return ;
+        }
+    } else if(cdb[2] == 0xff && cdb[9] == 0xff) { //ptpd
+        uint64_t wwn;
+        char* endptr;
+        wwn = strtoul(&pbuf[0], &endptr, 16);
+        if(endptr == &pbuf[0] || wwn == ULONG_MAX) {
+            DBUGDF(errno);
+            return ;
+        }   
+        struct vdisk_tgt_dev * tgt_dev = find_tgt_dev(vcmd->scsi, cmd->sess_h);
+        if(!tgt_dev) {
+            DBG("no tgt_dev");
+            return ;
+        }
+        tgt_dev->wwn = wwn;
+    }
+    return ;
+}
+
+static void exec_inquiry(struct vdisk_cmd *vcmd) {
+    struct scst_user_scsi_cmd_exec *cmd = &vcmd->cmd->exec_cmd;
+	struct scst_user_scsi_cmd_reply_exec *reply = &vcmd->reply->exec_reply;
+	int resp_len = 0; //response length
+    int length = cmd->bufflen; //command's buffer length
+    uint8_t *cdb = cmd->cdb;
+    uint8_t *address = (uint8_t*)(unsigned long)cmd->pbuf;
+    uint8_t buf[INQ_BUF_SZ];
+    SCSIPath* scsi = vcmd->scsi;
+    uint64_t wwn = scsi->info.wwn;
+    int i;
+
+    if (cmd->cdb[1] & CMDDT) {
+		set_cmd_error(vcmd,
+		    SCST_LOAD_SENSE(scst_sense_invalid_field_in_cdb));
+	    return ;
+	}
+    memset(buf, 0, sizeof(buf));
+    buf[0] = TYPE_SCANNER; 
+    if(cdb[1] & EVPD) {
+
+    } else {
+        buf[2] = 0x06; //SPC-4 
+        buf[3] = 0x12; //hisup  rsp data
+        buf[4] = 31;  //想要发送36btyes
+        buf[6] = 1; /* MultiP 1 */
+		buf[7] = 2;
+
+        memcpy(&buf[8], VENDOR, 8); //T10 VENDOR IDENTIFICATION
+        memset(&buf[16], 0 , 16); //PRODUCT IDENTIFICATION
+        // int len = min(strlen(PRODUCT_IDENTIFICATION), (size_t)16);
+        // memcpy(&buf[16], PRODUCT_IDENTIFICATION, len);
+        memcpy(&buf[18], "ptpinq", 6);
+        // buf[24] = 0x20; 
+        // buf[25] = 0x00;
+        // buf[26] = 0x00;
+        // buf[27] = 0x24;
+        // buf[28] = 0xff;
+        // buf[29] = 0x9c;
+        // buf[30] = 0xdc;
+        // buf[31] = 0x8e;
+        for(i = 0; i < 8; ++i) {
+            buf[31 - i] = (wwn & (0xFF << i));
+        }
+
+        memcpy(&buf[32], FIO_REV, 4); //PRODUCT REVISION LEVEL
+        resp_len = buf[4] + 5;
+    }
+
+    if (length > resp_len)
+		length = resp_len;
+    memcpy(address, buf, length); // copy to reply.pbuf
+
+    if (length < reply->resp_data_len)
+		set_resp_data_len(vcmd, length);
+
+    return ;
+}
+
+static Boolean 
+do_exec(struct vdisk_cmd *vcmd) {
     Boolean res = TRUE;
-    if(!scsi || !str || len <= 0) {
-        DBUGDF(EINVAL);
-        return FALSE;
+    struct scst_user_scsi_cmd_reply_exec* reply_exec = &vcmd->reply->exec_reply;
+    struct scst_user_scsi_cmd_exec* cmd = &vcmd->cmd->exec_cmd;
+    uint8_t *cdb = cmd->cdb;
+    unsigned int opcode = cdb[0];
+    struct vdisk_tgt_dev *tgt_dev = NULL;
+
+    memset(vcmd->reply,0 , sizeof(*vcmd->reply));
+    vcmd->reply->cmd_h = vcmd->cmd->cmd_h;
+    vcmd->reply->subcode = vcmd->cmd->subcode;
+    reply_exec->reply_type = SCST_EXEC_REPLY_COMPLETED;
+
+    vcmd->may_need_to_free_pbuf = 0;
+
+    if((cmd->pbuf == 0) && (cmd->alloc_len != 0)) {
+        cmd->pbuf =(unsigned long)align_alloc(cmd->alloc_len);
+        vcmd->may_need_to_free_pbuf = 1;
+        reply_exec->pbuf = cmd->pbuf;
+        if(cmd->pbuf == 0) {
+            set_busy(vcmd);
+            return res;
+        }
     }
-    if(len > sizeof(scsi->dxferp)) {
-        DBUGDF(E2BIG);
-        return FALSE;
+
+    if(cmd->data_direction & SCST_DATA_READ) {
+        reply_exec->resp_data_len = cmd->bufflen;
     }
-
-    memset(&scsi->cmdp[0], 0, INQ_CMD_LEN);
-    scsi->cmdp[0] = 0x8A;
-    scsi->cmdp[13] = INQ_REPLY_LEN / 512;
-
-    memset(&scsi->dxferp[0], 0, INQ_REPLY_LEN);
-    memcpy(&scsi->dxferp[0], str, len); 
-
-    res = sendSCSICommandByFd(scsi, fd, SG_DXFER_TO_DEV, 16);
-
-    return res ;
+#ifdef SDEBUG
+    //show opcode 
+    unsigned int j = 0;
+    
+    flockfile(stdout);
+    for(; j < ARRAY_SIZE(scsi_opcode);++j) {
+        if(opcode == scsi_opcode[j])
+            break;
+    }
+    if(j >= ARRAY_SIZE(scsi_opcode)) {
+        printf("log: opcode out of range \n");
+    } else 
+        printf("log: opcode = %s\n", scsi_opcode_string[j]);
+    funlockfile(stdout);
+#endif    
+    switch (opcode) {
+        case INQUIRY:
+            exec_inquiry(vcmd);
+            break;
+        case WRITE_6:
+        case WRITE_10:
+        case WRITE_12:
+        case WRITE_16:
+            tgt_dev = find_tgt_dev(vcmd->scsi, cmd->sess_h);
+            if(tgt_dev == NULL) {
+                set_cmd_error(vcmd,
+				    SCST_LOAD_SENSE(scst_sense_hardw_error));
+				return res;
+            }
+            exec_write(vcmd);
+            break;
+    }
+    return res;
 }
 
 static Boolean
 process_cmd(struct vdisk_cmd *vcmd) {
     Boolean ret = TRUE;
-
+    struct scst_user_get_cmd *cmd = vcmd->cmd;
+	struct scst_user_reply_cmd *reply = vcmd->reply;
+    switch(cmd->subcode) {
+        case SCST_USER_ATTACH_SESS:
+        case SCST_USER_DETACH_SESS:
+            ret = do_sess(vcmd);
+            break;    
+        case SCST_USER_PARSE:
+            ret = do_parse(vcmd);
+            break;
+        case SCST_USER_ALLOC_MEM:
+            ret = do_alloc_mem(vcmd);
+            break;
+        case SCST_USER_EXEC:
+            ret = do_exec(vcmd);
+            break;  
+        case SCST_USER_ON_FREE_CMD:
+            ret = do_on_free_cmd(vcmd);
+            break;
+        case SCST_USER_ON_CACHED_MEM_FREE:
+            ret = do_cached_mem_free(vcmd);
+            break;
+        case SCST_USER_TASK_MGMT_RECEIVED:
+            ret = do_tm(vcmd, 0);
+            break;
+        case SCST_USER_TASK_MGMT_DONE:
+            ret = do_tm(vcmd, 1);
+            break;  
+        default:
+            ret = FALSE;
+    }
     return ret;
 }
 
@@ -830,17 +1513,10 @@ again_poll:
 Boolean 
 SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     int res = 0;
-
+    scsi->recv = NULL;
     if(!testSCSIInterface(rtOpts->ifaceName, rtOpts) || 
     !getSCSIInterfaceInfo(rtOpts->ifaceName, &scsi->info))
         return FALSE;
-    
-    if(!scanSCSIEquipmemt(scsi))
-        return FALSE;
-    
-    usleep(1000 * 100);
-
-    readFromTarget(scsi);
 
     memset(scsi->thread,0, sizeof(scsi->thread));
     scsi->scst_usr_fd = open("/dev/scst_user", O_RDWR | O_NONBLOCK);
@@ -868,6 +1544,11 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
         DBUGDF(errno);
         return FALSE;
     }
+    res = pthread_mutex_init(&scsi->mutex, NULL);
+    if(res) {
+        DBUGDF(errno);
+        return FALSE;
+    }
     for(int i = 0;i < SCST_THREAD; ++i) {
         res = pthread_create(&scsi->thread[i], NULL, main_loop, scsi);
         if(res) {
@@ -876,6 +1557,13 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
             return FALSE;
         }
     }
+    system("scstadmin -config /etc/scst.conf");
+    if(!scanSCSIEquipmemt(scsi))
+        return FALSE;
+    
+    usleep(1000 * 100);
+
+    readFromTarget(scsi);
 
     return TRUE;   
 }
@@ -883,6 +1571,204 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
 Boolean
 scsiRefresh(SCSIPath* scsi, const RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     Boolean res = TRUE;
+    if(!scanSCSIEquipmemt(scsi))
+        return FALSE;
+    
+    usleep(1000 * 100);
 
+    readFromTarget(scsi);
     return res;
+}
+
+ssize_t scsiRecvEvent(Octet * buf, TimeInternal * time, SCSIPath * scsi, int flags) {
+    ssize_t ret = 0;
+    scsi->lastDestAddr = 0;
+    SCSIREC* recvptr = NULL;
+    int res;
+
+    if(scsi->recv_event <= 0)
+        return 0; 
+    res = pthread_mutex_lock(&scsi->mutex);
+    if(res) {
+        DBUGDF(errno);
+        return -1;
+    }
+    recvptr = scsi->recv;
+    while(recvptr != NULL && recvptr->isEvent != TRUE)
+        recvptr = recvptr->next;
+    if(!recvptr) {
+        DBG("recvptr == NULL");
+        pthread_mutex_unlock(&scsi->mutex);
+        return 0;
+    }
+    scsi->recv_event--;
+    memcpy(buf, recvptr->buf, recvptr->length);
+    recvptr->busy = FALSE;
+    time->seconds = recvptr->time.tv_sec;
+    time->nanoseconds = recvptr->time.tv_usec * 1000;
+    ret = recvptr->length;
+    scsi->lastSourceAddr = recvptr->wwn;
+
+    res = pthread_mutex_unlock(&scsi->mutex);
+    if(res) {
+        DBUGDF(errno);
+        return -1;
+    }
+    scsi->receivedPacketsTotal++;
+    scsi->receivedPackets++;
+    
+    return ret;
+}
+
+ssize_t scsiRecvGeneral(Octet * buf, SCSIPath* scsi) {
+    ssize_t ret = 0;
+    SCSIREC* recvptr = NULL;
+    int res;
+    scsi->lastSourceAddr = 0;
+
+    if(scsi->recv_general <= 0)
+        return 0; 
+    res = pthread_mutex_lock(&scsi->mutex);
+    if(res) {
+        DBUGDF(errno);
+        return -1;
+    }
+    recvptr = scsi->recv;
+    while(recvptr != NULL && recvptr->isEvent != FALSE)
+        recvptr = recvptr->next;
+    if(!recvptr) {
+        DBG("recvptr == NULL");
+        pthread_mutex_unlock(&scsi->mutex);
+        return 0;
+    }
+    scsi->recv_general--;
+    memcpy(buf, recvptr->buf, recvptr->length);
+    recvptr->busy = FALSE;
+    ret = recvptr->length;
+    scsi->lastSourceAddr = recvptr->wwn;
+
+    res = pthread_mutex_unlock(&scsi->mutex);
+    if(res) {
+        DBUGDF(errno);
+        return -1;
+    }
+    scsi->receivedPacketsTotal++;
+    scsi->receivedPackets++;
+    
+    return ret;
+}
+
+Boolean 
+scsiSendGeneral(Octet * buf, UInteger16 length, SCSIPath * scsi, 
+const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
+    int i;
+    Boolean res = TRUE, ret = TRUE;
+    memset(&scsi->dxferp[0], 0, INQ_REPLY_LEN);
+    memset(&scsi->cmdp[0], 0, INQ_CMD_LEN);
+    scsi->cmdp[2] = 0xfe;
+    scsi->cmdp[9] = 0xfe;
+    if(destinationAddress) { //unicast to dst
+        i = findIndexInDictionaryUsingWWN(scsi, destinationAddress);
+        if(i == DICTIONARY_LEN) 
+            return FALSE;
+        *(char *)(buf + 6) |= PTP_UNICAST;
+        memcpy(&scsi->dxferp[0], buf, (size_t)length);
+        res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i],length);
+        if(!res) 
+            ret = FALSE;
+    } else { //multicast
+        memcpy(&scsi->dxferp[0], buf, (size_t)length);
+        for(i = 0; i < DICTIONARY_LEN; ++i) {
+            if(scsi->dictionary_keys[i] && scsi->dictionary_values[i]) {
+                res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i], length) ;
+                if(!res) 
+                    ret = FALSE;
+            }
+        }
+    }
+    if(ret == TRUE) {
+        scsi->sentPackets++;
+	    scsi->sentPacketsTotal++;
+    }
+    return ret;
+}
+
+ssize_t 
+scsiSendPeerEvent(Octet * buf, UInteger16 length, SCSIPath * scsi, 
+const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
+{
+    int i;
+    Boolean res = TRUE, ret = TRUE;
+    memset(&scsi->dxferp[0], 0, INQ_REPLY_LEN);
+    memset(&scsi->cmdp[0], 0, INQ_CMD_LEN);
+    scsi->cmdp[2] = 0xfe;
+    scsi->cmdp[9] = 0xfe;
+    struct timeval tv;
+    if(destinationAddress) { //unicast to dst
+        i = findIndexInDictionaryUsingWWN(scsi, destinationAddress);
+        if(i == DICTIONARY_LEN) 
+            return FALSE;
+        *(char *)(buf + 6) |= PTP_UNICAST;
+        memcpy(&scsi->dxferp[0], buf, (size_t)length);
+        res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i],length);
+        if(!res) 
+            ret = FALSE;
+    } else { //multicast
+        memcpy(&scsi->dxferp[0], buf, (size_t)length);
+        for(i = 0; i < DICTIONARY_LEN; ++i) {
+            if(scsi->dictionary_keys[i] && scsi->dictionary_values[i]) {
+                res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i], length) ;
+                if(!res) 
+                    ret = FALSE;
+            }
+        }
+    }
+    res = gettimeofday(&tv, NULL);
+    if(res == -1) {
+        DBUGDF(errno);
+        return FALSE;
+    }
+    tim->seconds = tv.tv_sec;
+    tim->nanoseconds = tv.tv_usec;
+    if(ret == TRUE) {
+        scsi->sentPackets++;
+	    scsi->sentPacketsTotal++;
+    }
+    return ret;
+}
+
+ssize_t 
+scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
+ const RunTimeOpts *rtOpts, uint64_t destinationAddress)
+{
+    int i;
+    Boolean res = TRUE, ret = TRUE;
+    memset(&scsi->dxferp[0], 0, INQ_REPLY_LEN);
+    memset(&scsi->cmdp[0], 0, INQ_CMD_LEN);
+    scsi->cmdp[2] = 0xfe;
+    scsi->cmdp[9] = 0xfe;
+    if(destinationAddress) { //unicast to dst
+        i = findIndexInDictionaryUsingWWN(scsi, destinationAddress);
+        if(i == DICTIONARY_LEN) 
+            return FALSE;
+        *(char *)(buf + 6) |= PTP_UNICAST;
+        memcpy(&scsi->dxferp[0], buf, (size_t)length);
+        res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i],length);
+        if(!res) 
+            ret = FALSE;
+    } else { //multicast
+        memcpy(&scsi->dxferp[0], buf, (size_t)length);
+        for(i = 0; i < DICTIONARY_LEN; ++i) {
+            if(scsi->dictionary_keys[i] && scsi->dictionary_values[i]) {
+                res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i], length) ;
+                if(!res) 
+                    ret = FALSE;
+            }
+        }
+    }
+    if(ret == TRUE) {
+        scsi->sentPackets++;
+	    scsi->sentPacketsTotal++;
+    }
+    return ret;
 }

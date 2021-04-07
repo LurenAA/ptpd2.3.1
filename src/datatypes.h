@@ -964,7 +964,7 @@ typedef struct {
 #if 0
 	Boolean addOffset;
 #endif
-
+	uint64_t lastPdelayRespDstSCSI;
 } PtpClock;
 
 /**

@@ -214,6 +214,23 @@ typedef struct
     Boolean online;
 }SCSIInterfaceInfo;
 
+struct vdisk_tgt_dev {
+	uint64_t sess_h;
+    uint64_t wwn;
+};
+
+#include <sys/time.h>
+typedef struct a 
+{
+    uint64_t wwn;
+    Boolean isEvent;
+    struct timeval time;
+    uint16_t length;
+    char buf[1024];
+    Boolean busy;
+    struct a * next;  //must be the last member
+}SCSIREC;
+
 
 typedef struct {
     //自己的属性
@@ -223,7 +240,7 @@ typedef struct {
     uint64_t dictionary_keys[DICTIONARY_LEN]; //wwn
     char* dictionary_values[DICTIONARY_LEN]; //dev
     int dictionary_fd[DICTIONARY_LEN]; //fd
-    
+
     //sg相关
     sg_io_hdr_t io; 
     unsigned char cmdp[INQ_CMD_LEN]; //cmdp
@@ -233,6 +250,21 @@ typedef struct {
     pthread_t thread[SCST_THREAD];
     int scst_usr_fd;
     struct scst_user_dev_desc desc;
+    struct vdisk_tgt_dev tgt_devs[64]; //连接的主机数
+    
+    uint64_t lastSourceAddr;
+    uint64_t lastDestAddr;
+
+    uint64_t sentPackets;
+	uint64_t receivedPackets;
+
+	uint64_t sentPacketsTotal;
+	uint64_t receivedPacketsTotal;
+
+    pthread_mutex_t mutex; //mutex
+    SCSIREC* recv;
+    int recv_event;
+    int recv_general;
 } SCSIPath;
 
 
@@ -241,6 +273,8 @@ struct vdisk_cmd
     struct scst_user_get_cmd *cmd;
     struct scst_user_reply_cmd *reply;
     SCSIPath* scsi;
+    unsigned int may_need_to_free_pbuf:1; 
+    uint8_t sense[SCST_SENSE_BUFFERSIZE];
 };
 
 

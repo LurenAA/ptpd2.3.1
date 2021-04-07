@@ -507,7 +507,11 @@ do {  \
 #define DBUGDF(res)  \
   DBUGDFHELPER("%s", strerror(res),__FILE__, __LINE__, __FUNCTION__);
 
+ssize_t scsiSendPeerEvent(Octet*,UInteger16,SCSIPath*,const RunTimeOpts*,uint64_t,TimeInternal*);
 Boolean testSCSIInterface(char * ifaceName, const RunTimeOpts* rtOpts);
 Boolean
 scsiRefresh(SCSIPath* scsi, const RunTimeOpts * rtOpts, PtpClock * ptpClock);
+ssize_t 
+scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
+ const RunTimeOpts *rtOpts, uint64_t destinationAddress);
 #endif /*PTPD_DEP_H_*/

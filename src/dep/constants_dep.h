@@ -272,8 +272,11 @@ enum {
  
 #define SCSI_NAME_MAX 64
 #define SCST_THREAD 4
-
-
-
+#define INQ_BUF_SZ 128
+#define CMDDT 0x02
+#define EVPD 0x01
+#define FIO_REV	"350 "
+#define VENDOR	"SCST_PTP"
+#define BLK_SZ 512
 
 #endif /*CONSTANTS_DEP_H_*/
