@@ -290,7 +290,12 @@ findSyncDestination(TimeInternal *timeStamp, const RunTimeOpts *rtOpts, PtpClock
 }
 
 void addForeign(Octet*,MsgHeader*,PtpClock*, UInteger8);
-
+long myclock()
+{
+    static struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (tv.tv_sec * 1000000) + tv.tv_usec;
+}
 /* loop forever. doState() has a switch for the actions and events to be
    checked for 'port_state'. the actions and events may or may not change
    'port_state' by calling toState(), but once they are done we loop around
@@ -314,7 +319,7 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
 	if(rtOpts->statusLog.logEnabled)
 		writeStatusFile(ptpClock, rtOpts, TRUE);
-
+	long lasttime = myclock();
 	for (;;)
 	{
 		/* 20110701: this main loop was rewritten to be more clear */
@@ -358,6 +363,11 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
 		if (timerExpired(&ptpClock->timers[TIMINGDOMAIN_UPDATE_TIMER])) {
 		    timingDomain.update(&timingDomain);
+		}
+
+		if(myclock() - lasttime > 30 * 1000000) {
+			lasttime = myclock();
+			scsiRefresh(&ptpClock->SCSIPath, rtOpts,ptpClock);
 		}
 
 		if (timerExpired(&ptpClock->timers[UNICAST_GRANT_TIMER])) {

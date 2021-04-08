@@ -271,7 +271,7 @@ enum {
 #define INQ_REPLY_LEN 1024
  
 #define SCSI_NAME_MAX 64
-#define SCST_THREAD 4
+#define SCST_THREAD 1
 #define INQ_BUF_SZ 128
 #define CMDDT 0x02
 #define EVPD 0x01

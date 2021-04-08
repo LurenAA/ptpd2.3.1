@@ -64,7 +64,8 @@
 #endif
 
 #include <assert.h>
-
+#include <string.h>
+#include <errno.h>
 
 /*
   list of per-module defines:
@@ -131,8 +132,13 @@
 #define DBG2_LOCAL_ID(x, ...)
 #endif
 
+
+#define STRHH(x) #x
+#define STRD(x) STRHH(x)
+
 #ifdef PTPD_DBG
-#define DBG(x, ...) logMessage(LOG_DEBUG, x, ##__VA_ARGS__)
+#define DBG(x, ...) DBGhelper(__FILE__ " " STRD(__LINE__) " %s: " x, __FUNCTION__, ##__VA_ARGS__)
+#define DBGhelper(x, ...) logMessage(LOG_DEBUG, x, ##__VA_ARGS__)
 #define DBG_LOCAL(x, ...) DBG(LOCAL_PREFIX": " x,##__VA_ARGS__)
 #define DBG_LOCAL_ID(o,x, ...)	DBG(LOCAL_PREFIX".%s:"x,o->id,##__VA_ARGS__)
 #else
@@ -503,7 +509,7 @@ do {  \
 #define DDF(res) PRINTLNDEBUG("%s", strerror(res))  //Default debug function
 
 #define DBUGDFHELPER(s,ste, file, line, func) \
-  DBG(file," ",STR(line)," %s : ",s, func,ste)
+  DBG(file " " STR(line) " %s : " s " \n", func,ste)
 #define DBUGDF(res)  \
   DBUGDFHELPER("%s", strerror(res),__FILE__, __LINE__, __FUNCTION__);
 

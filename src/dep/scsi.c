@@ -495,8 +495,13 @@ checkPollSingle(int fd, short flags) {
     memset(&plf, 0, sizeof(struct pollfd));
     plf.fd = fd;
     plf.events = flags;
+again:
     n = poll(&plf, 1, 0);
-    if(n == 0 || n  == -1) {
+    if(n == 0)
+        return FALSE;
+    if(n  == -1) {
+        if(errno == EINTR)
+            goto again;
         DBUGDF(errno);
         return FALSE;
     }
@@ -976,12 +981,14 @@ Boolean readFromTarget(SCSIPath* scsi) {
         fd = scsi->dictionary_fd[i];
         if(fd == 0)
             continue;
+again:
         poll = checkPollSingle(fd, POLLIN);
         if(poll == FALSE) {
             continue;
         }
         if(readSCSI(scsi, fd, NULL) == TRUE)
             processInformation(scsi, fd);
+        goto again;
     }
 
     return TRUE;
@@ -1310,7 +1317,7 @@ static void exec_inquiry(struct vdisk_cmd *vcmd) {
         // buf[30] = 0xdc;
         // buf[31] = 0x8e;
         for(i = 0; i < 8; ++i) {
-            buf[31 - i] = (wwn & (0xFF << i));
+            buf[31 - i] = (wwn & (0xFF << (i * 8)));
         }
 
         memcpy(&buf[32], FIO_REV, 4); //PRODUCT REVISION LEVEL
@@ -1373,6 +1380,9 @@ do_exec(struct vdisk_cmd *vcmd) {
 #endif    
     switch (opcode) {
         case INQUIRY:
+            DBG("####################\n");
+            DBG("        QUIRY       \n");
+            DBG("####################\n");
             exec_inquiry(vcmd);
             break;
         case WRITE_6:
@@ -1427,16 +1437,17 @@ process_cmd(struct vdisk_cmd *vcmd) {
     }
     return ret;
 }
-
+#include <signal.h>
+    
 void* main_loop(void* arg) {
     SCSIPath* scsi = (SCSIPath*)arg;
     struct pollfd pl;
     int res,i,j ;
     struct vdisk_cmd vcmd = {
         .scsi = scsi
-    };
+    }; 
     Boolean ret = TRUE;
-
+   
     memset(&pl, 0, sizeof(pl));
     pl.fd = scsi->scst_usr_fd;
     pl.events = POLLIN;
@@ -1460,12 +1471,15 @@ void* main_loop(void* arg) {
             switch(res) {
                 case ESRCH:
 			    case EBUSY: 
-                    DBG("main_loop: ESRCH/EBUSY");
+                    DBG("main_loop: ESRCH/EBUSY\n");
                     multi.multi_cmd.preplies = (uintptr_t)&multi.replies[0];
                     multi.multi_cmd.replies_cnt = 0;
                     multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
                 case EINTR:
-                    DBG("main_loop: EINTR");
+                    DBG("main_loop: EINTR\n");
+                    // multi.multi_cmd.preplies = (uintptr_t)&multi.replies[0];
+                    // multi.multi_cmd.replies_cnt = 0;
+                    multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
 				    continue;
                 case EAGAIN:
                     multi.multi_cmd.preplies = (uintptr_t)&multi.replies[0];
@@ -1486,9 +1500,16 @@ again_poll:
                 goto again_poll;
             else {
                 res = errno;
-                DBUGDF(res);
+                if(res != EINTR)
+                    DBUGDF(res);
                 goto again_poll;
             }
+        }
+        if(multi.multi_cmd.cmds_cnt == 0) {
+            multi.multi_cmd.preplies = (uintptr_t)&multi.replies[0];
+            multi.multi_cmd.replies_cnt = 0;
+            multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
+            continue;
         }
         if (multi.multi_cmd.replies_done < multi.multi_cmd.replies_cnt) {
 			multi.multi_cmd.preplies = (uintptr_t)&multi.replies[multi.multi_cmd.replies_done];
@@ -1501,13 +1522,16 @@ again_poll:
             vcmd.cmd = &multi.cmds[i];
 			vcmd.reply = &multi.replies[j];
             ret = process_cmd(&vcmd);
-            if(ret == FALSE) {
-                return (void*)ret;
-            }
+            // if(ret == FALSE) {
+            //     return (void*)ret;
+            // }
         }
         multi.multi_cmd.replies_cnt = j;
 		multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
     }
+    DBG("####################\n");
+    DBG("go out of main loop\n");
+    DBG("####################\n");
 }
 
 Boolean 
@@ -1519,7 +1543,7 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
         return FALSE;
 
     memset(scsi->thread,0, sizeof(scsi->thread));
-    scsi->scst_usr_fd = open("/dev/scst_user", O_RDWR | O_NONBLOCK);
+    scsi->scst_usr_fd = open("/dev/scst_user", O_RDWR );//| O_NONBLOCK);
     if(scsi->scst_usr_fd == -1) {
         DBUGDF(errno);
         return FALSE;
@@ -1557,8 +1581,8 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
             return FALSE;
         }
     }
-    system("scstadmin -config /etc/scst.conf");
-    system("/home/xgb/refresh.sh");
+    // system("scstadmin -config /etc/scst.conf");
+    // system("/home/xgb/refresh.sh");
     if(!scanSCSIEquipmemt(scsi))
         return FALSE;
     
@@ -1571,12 +1595,16 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
 
 Boolean
 scsiRefresh(SCSIPath* scsi, const RunTimeOpts * rtOpts, PtpClock * ptpClock) {
-    Boolean res = TRUE;
-    if(!scanSCSIEquipmemt(scsi))
-        return FALSE;
+     Boolean res = TRUE;
+    // system("/home/xgb/refresh.sh");
+    int i;
+    for(i = 0; i < DICTIONARY_LEN; ++i) {
+        if(scsi->dictionary_fd[i])
+            sentINQUIRYByFd(scsi, scsi->dictionary_fd[i]);
+    }
     
     usleep(1000 * 100);
-    system("/home/xgb/refresh.sh");
+    
     readFromTarget(scsi);
     return res;
 }
