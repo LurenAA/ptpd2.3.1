@@ -937,8 +937,9 @@ parseINQUIRY(SCSIPath* scsi, int fd) {
     //     goto out;
     // }
     for(int n =0 ; n < 8; ++n) 
-        wwn = (wwn << 8) |  buf[WWN_BEGIN + n];
-   
+        wwn = (wwn << 8) |  (buf[WWN_BEGIN + n] & 0xff);
+
+
     res = saveDictionary(scsi, wwn, NULL, fd, NULL);
 
     return res;
@@ -1224,7 +1225,10 @@ static void exec_write(struct vdisk_cmd *vcmd) {
         SCSIREC* recv;
         struct timeval time;
         Boolean isEvent = (((pbuf[0] & 0x0f) < 4) && ((pbuf[0] & 0x0f) >= 0));
-        uint16_t length = pbuf[13] + (pbuf[12] << 8); 
+        uint16_t length = (cdb[13] & 0xff)| (cdb[12] << 8); 
+        if(!length) {
+            return ;    
+        }
 
         if(isEvent) {
             res = gettimeofday(&time, NULL);
@@ -1342,7 +1346,8 @@ static void exec_inquiry(struct vdisk_cmd *vcmd) {
         // buf[30] = 0xdc;
         // buf[31] = 0x8e;
         for(i = 0; i < 8; ++i) {
-            buf[31 - i] = (wwn & (0xFF << (i * 8)));
+            buf[31 - i] = (wwn >> (i * 8)) & 0xff;
+            // (wwn & (0xFF << (i * 8)));
         }
 
         memcpy(&buf[32], FIO_REV, 4); //PRODUCT REVISION LEVEL
