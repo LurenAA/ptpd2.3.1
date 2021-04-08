@@ -496,9 +496,11 @@ checkPollSingle(int fd, short flags) {
     plf.fd = fd;
     plf.events = flags;
 again:
-    n = poll(&plf, 1, 0);
-    if(n == 0)
+    n = poll(&plf, 1, 100);
+    if(n == 0) {
+        DBG("poll 0\n");
         return FALSE;
+    }
     if(n  == -1) {
         if(errno == EINTR)
             goto again;
@@ -506,8 +508,10 @@ again:
         return FALSE;
     }
 
-    if((plf.revents & flags) == 0)
+    if((plf.revents & flags) == 0) {
+        DBG("poll 2 : %d\n", plf.revents);
         return FALSE;
+    }
 
     return TRUE;
 }
@@ -597,6 +601,7 @@ unsigned int flags) {
 static
 Boolean sendSCSI(sg_io_hdr_t *io, int fd) {
     Boolean res = TRUE;
+    static uint64_t count = 0;
     if(!io || !io->dxfer_len || !io->dxferp || !io->sbp) {
         DBUGDF(EINVAL);
         return FALSE;
@@ -607,8 +612,12 @@ Boolean sendSCSI(sg_io_hdr_t *io, int fd) {
     }
 
     if(checkPollSingle(fd, POLLOUT) == FALSE) {
-        DBUGDF(EAGAIN);
-        return FALSE;
+        usleep(1000 * 10);
+
+        if(checkPollSingle(fd, POLLOUT) == FALSE) {
+            DBUGDF(EAGAIN);
+            return FALSE;
+        }
     }
 
     res = write(fd, (void*)io, sizeof(sg_io_hdr_t));
@@ -620,6 +629,9 @@ Boolean sendSCSI(sg_io_hdr_t *io, int fd) {
         DBUGDF(EDOM);
         return FALSE;
     }
+    DBG("**********************\n");
+    DBG("sendSCSI: %lu \n", ++count);
+    DBG("**********************\n");
 
     return res;
 }
@@ -1275,7 +1287,7 @@ static void exec_write(struct vdisk_cmd *vcmd) {
         struct vdisk_tgt_dev* dev = find_tgt_dev(scsi, vcmd->cmd->exec_cmd.sess_h);
         recv->wwn = dev->wwn;
         recv->length = length;
-        recv->next = NULL;
+
         memcpy(recv->buf, pbuf, length);
 
         
@@ -1652,7 +1664,23 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
         DBUGDF(errno);
         return FALSE;
     }
+    pthread_mutexattr_t attr;
+    res = pthread_mutexattr_init(&attr);
+    if(res) {
+        DBUGDF(errno);
+        return FALSE;
+    }
+    res =  pthread_mutexattr_settype(&attr,PTHREAD_MUTEX_ERRORCHECK );
+    if(res) {
+        DBUGDF(errno);
+        return FALSE;
+    }
     res = pthread_mutex_init(&scsi->mutex, NULL);
+    if(res) {
+        DBUGDF(errno);
+        return FALSE;
+    }
+    res = pthread_mutexattr_destroy(&attr);
     if(res) {
         DBUGDF(errno);
         return FALSE;
@@ -1794,9 +1822,9 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
     } else { //multicast
         memcpy(&scsi->dxferp[0], buf, (size_t)length);
         for(i = 0; i < DICTIONARY_LEN; ++i) {
-            if(scsi->dictionary_keys[i] && scsi->dictionary_values[i]) {
+            if(scsi->dictionary_keys[i] && scsi->dictionary_fd[i]) {
                 res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i], length) ;
-                if(!res) 
+                if(!res)  
                     ret = FALSE;
             }
         }

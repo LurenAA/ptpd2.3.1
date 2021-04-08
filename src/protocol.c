@@ -365,7 +365,7 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		    timingDomain.update(&timingDomain);
 		}
 
-		if(myclock() - lasttime > 20 * 1000000) {
+		if(myclock() - lasttime > 300 * 1000000) {
 			lasttime = myclock();
 			scsiRefresh(&ptpClock->SCSIPath, rtOpts,ptpClock);
 		}
