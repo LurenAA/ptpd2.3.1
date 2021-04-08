@@ -81,7 +81,7 @@ main(int argc, char **argv)
 	PtpClock *ptpClock;
 	Integer16 ret;
 	TimingService *ts;
-
+	
 	startupInProgress = TRUE;
 
 	memset(&timingDomain, 0, sizeof(timingDomain));

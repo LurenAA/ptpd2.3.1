@@ -967,7 +967,7 @@ Boolean processInformation(SCSIPath* scsi, int fd) {
     Boolean res = TRUE;
     if(memcmp(&scsi->dxferp[18], WWN_INQ_ID, 6) == 0) {
         parseINQUIRY(scsi, fd);
-        return sendWWNtoDev(scsi, fd);
+        // return sendWWNtoDev(scsi, fd);
     }
 
     return res;
@@ -1035,6 +1035,17 @@ find_empty_tgt_dev(SCSIPath* scsi)  {
     return find_tgt_dev(scsi, 0);
 }
 
+static int 
+countNumberInString(const char* str, int len) {
+    int num = 0;
+    for(int i = 0; i < len; ++i) {
+        if((str[i] >= '0' && str[i] <= '9') || (str[i] >= 'a' && str[i] <= 'f')) {
+            ++num;
+        }
+    }
+    return num;
+}
+
 static 
 Boolean do_sess(struct vdisk_cmd* vcmd) {
     Boolean res =  TRUE;
@@ -1044,6 +1055,7 @@ Boolean do_sess(struct vdisk_cmd* vcmd) {
     
     tgt_dev = find_tgt_dev(vcmd->scsi, cmd->sess.sess_h);
     if (cmd->subcode == SCST_USER_ATTACH_SESS) {
+        DBG("sess initiator: %s \n", cmd->sess.initiator_name);
         if (tgt_dev != NULL) {
             DBUGDF(EEXIST);
             res = FALSE;
@@ -1056,6 +1068,18 @@ Boolean do_sess(struct vdisk_cmd* vcmd) {
             goto reply;
         }
         tgt_dev->sess_h = cmd->sess.sess_h;
+        if(countNumberInString(&cmd->sess.initiator_name[0], 
+        strlen(&cmd->sess.initiator_name[0])) == 16) {
+            char* pch;
+            uint64_t wwn = 0;
+            pch = strtok(&cmd->sess.initiator_name[0], ":");
+            while(pch != NULL) {
+                wwn <<= 8;
+                wwn += strtoul(pch, NULL, 16);
+                pch = strtok(NULL, ":");
+            }
+            tgt_dev->wwn = wwn;
+        }
     } else {
         if(tgt_dev == NULL) {
             DBUGDF(ESRCH);
@@ -1068,7 +1092,7 @@ reply:
     memset(reply, 0, sizeof(*reply));
 	reply->cmd_h = cmd->cmd_h;
 	reply->subcode = cmd->subcode;
-	reply->result = res;  
+	reply->result = res == TRUE ? 0 : 1;  
 
 	return res;
 }
@@ -1186,8 +1210,8 @@ do_tm(struct vdisk_cmd *vcmd, int done){
     return res;
 }
 /**
- *  cdb[9] == 0xff && cdb[2] == 0xff  master -> slave  wwn
- *  cdb[9] == 0xfe && dfb[2] == 0xfe  ptpd
+ *  obselete this : cdb[9] == 0xff && cdb[2] == 0xff  master -> slave wwn 
+ *  cdb[9] == 0xfe && dfb[2] == 0xfe  ptpd   
  **/ 
 static void exec_write(struct vdisk_cmd *vcmd) {
     struct scst_user_scsi_cmd_exec *cmd = &vcmd->cmd->exec_cmd;
@@ -1257,21 +1281,22 @@ static void exec_write(struct vdisk_cmd *vcmd) {
             DBUGDF(res);
             return ;
         }
-    } else if(cdb[2] == 0xff && cdb[9] == 0xff) { //ptpd
-        uint64_t wwn;
-        char* endptr;
-        wwn = strtoul(&pbuf[0], &endptr, 16);
-        if(endptr == &pbuf[0] || wwn == ULONG_MAX) {
-            DBUGDF(errno);
-            return ;
-        }   
-        struct vdisk_tgt_dev * tgt_dev = find_tgt_dev(vcmd->scsi, cmd->sess_h);
-        if(!tgt_dev) {
-            DBG("no tgt_dev");
-            return ;
-        }
-        tgt_dev->wwn = wwn;
-    }
+    } 
+    // else if(cdb[2] == 0xff && cdb[9] == 0xff) { //ptpd
+    //     uint64_t wwn;
+    //     char* endptr;
+    //     wwn = strtoul(&pbuf[0], &endptr, 16);
+    //     if(endptr == &pbuf[0] || wwn == ULONG_MAX) {
+    //         DBUGDF(errno);
+    //         return ;
+    //     }   
+    //     struct vdisk_tgt_dev * tgt_dev = find_tgt_dev(vcmd->scsi, cmd->sess_h);
+    //     if(!tgt_dev) {
+    //         DBG("no tgt_dev");
+    //         return ;
+    //     }
+    //     tgt_dev->wwn = wwn;
+    // }
     return ;
 }
 
@@ -1437,9 +1462,10 @@ process_cmd(struct vdisk_cmd *vcmd) {
     }
     return ret;
 }
-#include <signal.h>
     
 void* main_loop(void* arg) {
+    sigset_t sigset;
+
     SCSIPath* scsi = (SCSIPath*)arg;
     struct pollfd pl;
     int res,i,j ;
@@ -1447,26 +1473,45 @@ void* main_loop(void* arg) {
         .scsi = scsi
     }; 
     Boolean ret = TRUE;
-   
+    
+    res = sigemptyset(&sigset);
+    if(res == -1) {
+        res = errno;
+        DBUGDF(res);
+        return FALSE;
+    }
+    res = sigaddset(&sigset, SIGALRM);
+    if(res == -1) {
+        res = errno;
+        DBUGDF(res);
+        return FALSE;
+    }
+    res = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+    if(res == -1) {
+        res = errno;
+        DBUGDF(res);
+        return FALSE;
+    }
+
     memset(&pl, 0, sizeof(pl));
     pl.fd = scsi->scst_usr_fd;
     pl.events = POLLIN;
 #define MULTI_CMDS_CNT 2
     struct 
     {
+        struct scst_user_reply_cmd replies[MULTI_CMDS_CNT];
         struct scst_user_get_multi multi_cmd;
         struct scst_user_get_cmd cmds[MULTI_CMDS_CNT];
-        struct scst_user_reply_cmd replies[MULTI_CMDS_CNT];
     } multi;
     memset(&multi, 0, sizeof(multi));
     multi.multi_cmd.preplies = (aligned_u64)&multi.replies[0];
     multi.multi_cmd.replies_cnt = 0;
     multi.multi_cmd.replies_done = 0;
     multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
-
+    
     while(1) {
         res = ioctl(scsi->scst_usr_fd, SCST_USER_REPLY_AND_GET_MULTI, &multi.multi_cmd);
-        if(res) {
+        if(res == -1) {
             res = errno;
             switch(res) {
                 case ESRCH:
@@ -1476,10 +1521,10 @@ void* main_loop(void* arg) {
                     multi.multi_cmd.replies_cnt = 0;
                     multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
                 case EINTR:
-                    DBG("main_loop: EINTR\n");
+                    // DBG("main_loop: EINTR\n");
                     // multi.multi_cmd.preplies = (uintptr_t)&multi.replies[0];
                     // multi.multi_cmd.replies_cnt = 0;
-                    multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
+                    // multi.multi_cmd.cmds_cnt = MULTI_CMDS_CNT;
 				    continue;
                 case EAGAIN:
                     multi.multi_cmd.preplies = (uintptr_t)&multi.replies[0];
@@ -1493,7 +1538,7 @@ void* main_loop(void* arg) {
                     continue;
             }
 again_poll:
-            res = poll(&pl, 1, 0);
+            res = poll(&pl, 1, -1);
             if(res > 0)
                 continue;
             else if(res == 0)
@@ -1532,6 +1577,40 @@ again_poll:
     DBG("####################\n");
     DBG("go out of main loop\n");
     DBG("####################\n");
+    return (void*)(long)ret;
+}
+
+#define LOAD_ "- - -"
+#define INDEXN (sizeof("/sys/class/scsi_host/hostn") - 2)
+static 
+void refresh(SCSIPath* scsi,const  RunTimeOpts * rtOpts) {
+    static char fileName[64] = {};
+    static Boolean Ini = TRUE;
+    if(Ini == TRUE) {
+        Ini = FALSE;
+        memset(&fileName[0], '\0', sizeof(fileName));
+        strcpy(&fileName[0], "/sys/class/scsi_host/hostn");
+        strcat(&fileName[0],"/scan");
+    }
+    int fd, n;
+    for(int i = 0; i < 6; ++i) {
+        fileName[INDEXN] = 48 + i;
+        fd = open(fileName, O_WRONLY);
+        if(fd == -1) {
+            DBUGDF(errno);
+            goto out;
+        }
+        n = write(fd, LOAD_, sizeof(LOAD_));
+        if(n == -1) {
+            DBUGDF(errno);
+            goto out;
+        }
+        fsync(fd);
+    out:
+        close(fd);
+    }
+    
+    return ;
 }
 
 Boolean 
@@ -1543,7 +1622,7 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
         return FALSE;
 
     memset(scsi->thread,0, sizeof(scsi->thread));
-    scsi->scst_usr_fd = open("/dev/scst_user", O_RDWR );//| O_NONBLOCK);
+    scsi->scst_usr_fd = open("/dev/scst_user", O_RDWR | O_NONBLOCK);
     if(scsi->scst_usr_fd == -1) {
         DBUGDF(errno);
         return FALSE;
@@ -1553,7 +1632,7 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     scsi->desc.license_str = (unsigned long)"GPL";
     strncpy(scsi->desc.name, "fc_ptp", sizeof(scsi->desc.name) - 1);
     scsi->desc.name[sizeof(scsi->desc.name) - 1] = '\0';
-    scsi->desc.type = TYPE_DISK;
+    scsi->desc.type = TYPE_SCANNER;
     scsi->desc.block_size = (1 << 9);
     scsi->desc.opt.parse_type = SCST_USER_PARSE_STANDARD;
     scsi->desc.opt.on_free_cmd_type = SCST_USER_ON_FREE_CMD_IGNORE;
@@ -1581,8 +1660,9 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
             return FALSE;
         }
     }
-    // system("scstadmin -config /etc/scst.conf");
+    system("scstadmin -config /etc/scst.conf");
     // system("/home/xgb/refresh.sh");
+    refresh(scsi, rtOpts);
     if(!scanSCSIEquipmemt(scsi))
         return FALSE;
     
@@ -1597,6 +1677,7 @@ Boolean
 scsiRefresh(SCSIPath* scsi, const RunTimeOpts * rtOpts, PtpClock * ptpClock) {
      Boolean res = TRUE;
     // system("/home/xgb/refresh.sh");
+    refresh(scsi, rtOpts);
     int i;
     for(i = 0; i < DICTIONARY_LEN; ++i) {
         if(scsi->dictionary_fd[i])

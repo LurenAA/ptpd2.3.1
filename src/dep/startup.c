@@ -97,6 +97,9 @@ FILE* G_lockFilePointer;
  */
 void catchSignals(int sig)
 {
+	DBG("##################\n");
+	DBG("      sig:%d       \n", sig);
+	DBG("##################\n");
 	switch (sig) {
 	case SIGINT:
 		sigint_received = 1;
