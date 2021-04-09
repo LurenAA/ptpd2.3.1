@@ -296,6 +296,16 @@ long myclock()
     gettimeofday(&tv, NULL);
     return (tv.tv_sec * 1000000) + tv.tv_usec;
 }
+// static Boolean sg_read = FALSE;
+// void srd(int d) {
+// 	DBG("vvvvvvvvvvvvvvvvvvvvvvvvv\n");
+// 		DBG("          SIGPOLL\n");
+// 		DBG("vvvvvvvvvvvvvvvvvvvvvvvvv\n");
+// 	if(d == SIGPOLL) {
+		
+// 		sg_read = TRUE;
+// 	}
+// }
 /* loop forever. doState() has a switch for the actions and events to be
    checked for 'port_state'. the actions and events may or may not change
    'port_state' by calling toState(), but once they are done we loop around
@@ -320,6 +330,7 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	if(rtOpts->statusLog.logEnabled)
 		writeStatusFile(ptpClock, rtOpts, TRUE);
 	long lasttime = myclock();
+	// signal(SIGPOLL, srd);
 	for (;;)
 	{
 		/* 20110701: this main loop was rewritten to be more clear */
@@ -348,7 +359,7 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 				}
 
 			   }
-			
+				
 		} else {
 			doState(rtOpts, ptpClock);
 		}
@@ -365,7 +376,7 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		    timingDomain.update(&timingDomain);
 		}
 
-		if(myclock() - lasttime > 300 * 1000000) {
+		if(myclock() - lasttime > 30 * 1000000) {
 			lasttime = myclock();
 			scsiRefresh(&ptpClock->SCSIPath, rtOpts,ptpClock);
 		}
@@ -592,13 +603,14 @@ toState(UInteger8 state, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
                 toState(PTP_FAULTY, rtOpts, ptpClock);
                 break;
             }
-		} else if(rtOpts->transport == SCSI_FC) {
-			if(!scsiRefresh(&ptpClock->SCSIPath, rtOpts,ptpClock)) {
-				WARNING("Error while refreshing scsi");
-				toState(PTP_FAULTY, rtOpts, ptpClock);
-                break;
-			}
-		}
+		} 
+		// else if(rtOpts->transport == SCSI_FC) {
+		// 	if(!scsiRefresh(&ptpClock->SCSIPath, rtOpts,ptpClock)) {
+		// 		WARNING("Error while refreshing scsi");
+		// 		toState(PTP_FAULTY, rtOpts, ptpClock);
+        //         break;
+		// 	}
+		// }
 		
 			timerStart(&ptpClock->timers[ANNOUNCE_RECEIPT_TIMER], 
 				(ptpClock->announceReceiptTimeout) * 

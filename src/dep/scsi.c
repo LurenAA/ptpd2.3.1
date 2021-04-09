@@ -494,9 +494,9 @@ checkPollSingle(int fd, short flags) {
 
     memset(&plf, 0, sizeof(struct pollfd));
     plf.fd = fd;
-    plf.events = flags;
+    plf.events = flags | POLLHUP;
 again:
-    n = poll(&plf, 1, 100);
+    n = poll(&plf, 1, 0);
     if(n == 0) {
         DBG("poll 0\n");
         return FALSE;
@@ -510,6 +510,10 @@ again:
 
     if((plf.revents & flags) == 0) {
         DBG("poll 2 : %d\n", plf.revents);
+        return FALSE;
+    }
+    if(plf.revents & POLLHUP) {
+        DBG("POLLHUP\n");
         return FALSE;
     }
 
@@ -1336,7 +1340,7 @@ static void exec_inquiry(struct vdisk_cmd *vcmd) {
     memset(buf, 0, sizeof(buf));
     buf[0] = TYPE_SCANNER; 
     if(cdb[1] & EVPD) {
-
+        DBG("EVPD\n");
     } else {
         buf[2] = 0x06; //SPC-4 
         buf[3] = 0x12; //hisup  rsp data
@@ -1416,15 +1420,15 @@ do_exec(struct vdisk_cmd *vcmd) {
     }
     if(j >= ARRAY_SIZE(scsi_opcode)) {
         printf("log: opcode out of range \n");
-    } else 
-        printf("log: opcode = %s\n", scsi_opcode_string[j]);
+    } else {
+        printf("------------------------------------\n");
+        printf("          log: opcode = %s\n", scsi_opcode_string[j]);
+        printf("------------------------------------\n");
+    }
     funlockfile(stdout);
 #endif    
     switch (opcode) {
         case INQUIRY:
-            DBG("####################\n");
-            DBG("        QUIRY       \n");
-            DBG("####################\n");
             exec_inquiry(vcmd);
             break;
         case WRITE_6:
@@ -1498,6 +1502,12 @@ void* main_loop(void* arg) {
         return FALSE;
     }
     res = sigaddset(&sigset, SIGALRM);
+    if(res == -1) {
+        res = errno;
+        DBUGDF(res);
+        return FALSE;
+    }
+    res = sigaddset(&sigset, SIGPOLL);
     if(res == -1) {
         res = errno;
         DBUGDF(res);
@@ -1698,9 +1708,8 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     refresh(scsi, rtOpts);
     if(!scanSCSIEquipmemt(scsi))
         return FALSE;
-    
-    usleep(1000 * 100);
 
+    // usleep(1000 * 100);
     readFromTarget(scsi);
 
     return TRUE;   
@@ -1708,7 +1717,7 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
 
 Boolean
 scsiRefresh(SCSIPath* scsi, const RunTimeOpts * rtOpts, PtpClock * ptpClock) {
-     Boolean res = TRUE;
+    Boolean res = TRUE;
     // system("/home/xgb/refresh.sh");
     refresh(scsi, rtOpts);
     int i;
@@ -1717,7 +1726,7 @@ scsiRefresh(SCSIPath* scsi, const RunTimeOpts * rtOpts, PtpClock * ptpClock) {
             sentINQUIRYByFd(scsi, scsi->dictionary_fd[i]);
     }
     
-    usleep(1000 * 100);
+    // usleep(1000 * 100);
     
     readFromTarget(scsi);
     return res;
@@ -1823,9 +1832,20 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
         memcpy(&scsi->dxferp[0], buf, (size_t)length);
         for(i = 0; i < DICTIONARY_LEN; ++i) {
             if(scsi->dictionary_keys[i] && scsi->dictionary_fd[i]) {
+                ga:
                 res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i], length) ;
-                if(!res)  
+                if(!res && ret == TRUE) {
                     ret = FALSE;
+                    int t = close(scsi->dictionary_fd[i]);
+                    assert(t == 0);
+                    t = open(scsi->dictionary_values[i], O_NONBLOCK | O_RDWR);
+                    assert(t != -1);
+                    scsi->dictionary_fd[i] = t;
+                    goto ga;
+                }
+                if(!res)  
+                    return FALSE;
+                ret = TRUE;
             }
         }
     }
