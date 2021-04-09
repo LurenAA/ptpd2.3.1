@@ -911,7 +911,8 @@ doState(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 					ptpClock->counters.announceTimeouts++;
 				}
 
-				if (rtOpts->ipMode != IPMODE_UNICAST && rtOpts->do_IGMP_refresh && rtOpts->transport != IEEE_802_3) {
+				if (rtOpts->transport!=SCSI_FC
+				 && rtOpts->ipMode != IPMODE_UNICAST && rtOpts->do_IGMP_refresh && rtOpts->transport != IEEE_802_3) {
 				/* if multicast refresh failed, restart network - helps recover after driver reloads and such */
                 		    if(!netRefreshIGMP(&ptpClock->netPath, rtOpts, ptpClock)) {
                         		WARNING("Error while refreshing multicast - restarting transports\n");
@@ -1436,8 +1437,8 @@ processMessage(const RunTimeOpts* rtOpts, PtpClock* ptpClock, TimeInternal* time
 		}
 	break;
     case FOLLOW_UP:
-	handleFollowUp(&ptpClock->msgTmpHeader,
-	           length, isFromSelf, rtOpts, ptpClock);
+		handleFollowUp(&ptpClock->msgTmpHeader,
+				length, isFromSelf, rtOpts, ptpClock);
 	break;
     case DELAY_REQ:
 		if(rtOpts->transport != SCSI_FC)
@@ -3790,7 +3791,7 @@ issueSync(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 		if(rtOpts->transport != SCSI_FC)
 			(void)issueSyncSingle(dst, &ptpClock->sentSyncSequenceId, rtOpts, ptpClock);
 		else if (rtOpts->transport == SCSI_FC) {
-
+			(void)issueSyncSingleSCSI(0, &ptpClock->sentSyncSequenceId, rtOpts, ptpClock);
 		}
 	/* send Sync to unicast destination(s) */
 	} else {
@@ -4059,12 +4060,19 @@ issueDelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
     		dst = ptpClock->masterAddr;
         }
 
-	if (!netSendEvent(ptpClock->msgObuf,DELAY_REQ_LENGTH,
+	
+	if (rtOpts->transport != SCSI_FC && !netSendEvent(ptpClock->msgObuf,DELAY_REQ_LENGTH,
 			  &ptpClock->netPath, rtOpts, dst, &internalTime)) {
 		toState(PTP_FAULTY,rtOpts,ptpClock);
 		ptpClock->counters.messageSendErrors++;
 		DBGV("delayReq message can't be sent -> FAULTY state \n");
-	} else {
+	} else if(rtOpts->transport == SCSI_FC && !scsiSendEvent(ptpClock->msgObuf,DELAY_REQ_LENGTH,
+			  &ptpClock->SCSIPath, rtOpts, 0, &internalTime)) {
+		toState(PTP_FAULTY,rtOpts,ptpClock);
+		ptpClock->counters.messageSendErrors++;
+		DBGV("delayReq message can't be sent -> FAULTY state \n");
+	}
+	else {
 		DBGV("DelayReq MSG sent ! \n");
 		
 #ifdef SO_TIMESTAMPING
@@ -4128,12 +4136,19 @@ issuePdelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 	}
 	
 	msgPackPdelayReq(ptpClock->msgObuf,&originTimestamp,ptpClock);
-	if (!netSendPeerEvent(ptpClock->msgObuf,PDELAY_REQ_LENGTH,
+	if (rtOpts->transport != SCSI_FC && 
+	!netSendPeerEvent(ptpClock->msgObuf,PDELAY_REQ_LENGTH,
 			      &ptpClock->netPath, rtOpts, dst, &internalTime)) {
 		toState(PTP_FAULTY,rtOpts,ptpClock);
 		ptpClock->counters.messageSendErrors++;
 		DBGV("PdelayReq message can't be sent -> FAULTY state \n");
-	} else {
+	} else if (rtOpts->transport == SCSI_FC && scsiSendEvent(ptpClock->msgObuf,PDELAY_REQ_LENGTH,
+			      &ptpClock->SCSIPath, rtOpts, 0, &internalTime)) {
+		toState(PTP_FAULTY,rtOpts,ptpClock);
+		ptpClock->counters.messageSendErrors++;
+		DBGV("PdelayReq message can't be sent -> FAULTY state \n");
+	}
+	else {
 		DBGV("PdelayReq MSG sent ! \n");
 		
 #ifdef SO_TIMESTAMPING

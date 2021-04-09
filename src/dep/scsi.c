@@ -616,12 +616,12 @@ Boolean sendSCSI(sg_io_hdr_t *io, int fd) {
     }
 
     if(checkPollSingle(fd, POLLOUT) == FALSE) {
-        usleep(1000 * 10);
+        // usleep(1000 * 10);
 
-        if(checkPollSingle(fd, POLLOUT) == FALSE) {
-            DBUGDF(EAGAIN);
-            return FALSE;
-        }
+        // if(checkPollSingle(fd, POLLOUT) == FALSE) {
+        DBUGDF(EAGAIN);
+        return FALSE;
+        // }
     }
 
     res = write(fd, (void*)io, sizeof(sg_io_hdr_t));
@@ -1226,6 +1226,67 @@ do_tm(struct vdisk_cmd *vcmd, int done){
 
     return res;
 }
+
+static void
+saveMessageInReceiveList(SCSIPath* scsi, char* buf, int length, Boolean isEvent, uint64_t wwn) {
+    int res = 0;
+    struct timeval time;
+    SCSIREC* recv;
+    if(isEvent) {
+        res = gettimeofday(&time, NULL);
+        if(res)  {
+            res = errno;
+            DBUGDF(res);
+            return ;
+        }
+    }
+
+    res = pthread_mutex_lock(&scsi->mutex);
+    if(res) {
+        res = errno;
+        DBUGDF(res);
+        return ;
+    }
+    recv = scsi->recv;
+    while(recv != NULL) {
+        if(recv->busy == FALSE || recv->next == NULL) {
+            break;
+        }
+        recv = recv->next;
+    }
+    if(recv == NULL || (recv->next == NULL && recv->busy == TRUE)) {
+        if(recv == NULL) {
+            scsi->recv = (SCSIREC*)malloc(sizeof(SCSIREC));
+            recv = scsi->recv;
+        } else {
+            recv->next = (SCSIREC*)malloc(sizeof(SCSIREC));
+            recv = recv->next;
+        }
+    }
+    memset(recv, 0, sizeof(SCSIREC) - sizeof(struct a *));
+    recv->busy = TRUE;
+    if(isEvent) {
+        recv->time.tv_sec = time.tv_sec;
+        recv->time.tv_usec = time.tv_usec;
+        recv->isEvent = TRUE;
+        scsi->recv_event++;
+    } else {
+        recv->isEvent = FALSE;
+        scsi->recv_general++;
+    }
+    recv->wwn = wwn;
+    recv->length = length;
+
+    memcpy(recv->buf, buf, length);
+
+        
+    res = pthread_mutex_unlock(&scsi->mutex);
+    if(res) {
+        res = errno;
+        DBUGDF(res);
+        return ;
+    }
+}
 /**
  *  obselete this : cdb[9] == 0xff && cdb[2] == 0xff  master -> slave wwn 
  *  cdb[9] == 0xfe && dfb[2] == 0xfe  ptpd   
@@ -1819,16 +1880,16 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
     memset(&scsi->cmdp[0], 0, INQ_CMD_LEN);
     scsi->cmdp[2] = 0xfe;
     scsi->cmdp[9] = 0xfe;
-    if(destinationAddress) { //unicast to dst
-        i = findIndexInDictionaryUsingWWN(scsi, destinationAddress);
-        if(i == DICTIONARY_LEN) 
-            return FALSE;
-        *(char *)(buf + 6) |= PTP_UNICAST;
-        memcpy(&scsi->dxferp[0], buf, (size_t)length);
-        res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i],length);
-        if(!res) 
-            ret = FALSE;
-    } else { //multicast
+    // if(destinationAddress) { //unicast to dst
+    //     i = findIndexInDictionaryUsingWWN(scsi, destinationAddress);
+    //     if(i == DICTIONARY_LEN) 
+    //         return FALSE;
+    //     *(char *)(buf + 6) |= PTP_UNICAST;
+    //     memcpy(&scsi->dxferp[0], buf, (size_t)length);
+    //     res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i],length);
+    //     if(!res) 
+    //         ret = FALSE;
+    // } else { //multicast
         memcpy(&scsi->dxferp[0], buf, (size_t)length);
         for(i = 0; i < DICTIONARY_LEN; ++i) {
             if(scsi->dictionary_keys[i] && scsi->dictionary_fd[i]) {
@@ -1848,7 +1909,8 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
                 ret = TRUE;
             }
         }
-    }
+    // }
+    saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn);
     if(ret == TRUE) {
         scsi->sentPackets++;
 	    scsi->sentPacketsTotal++;
@@ -1867,25 +1929,37 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
     scsi->cmdp[2] = 0xfe;
     scsi->cmdp[9] = 0xfe;
     struct timeval tv;
-    if(destinationAddress) { //unicast to dst
-        i = findIndexInDictionaryUsingWWN(scsi, destinationAddress);
-        if(i == DICTIONARY_LEN) 
-            return FALSE;
-        *(char *)(buf + 6) |= PTP_UNICAST;
-        memcpy(&scsi->dxferp[0], buf, (size_t)length);
-        res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i],length);
-        if(!res) 
-            ret = FALSE;
-    } else { //multicast
+    // if(destinationAddress) { //unicast to dst
+    //     i = findIndexInDictionaryUsingWWN(scsi, destinationAddress);
+    //     if(i == DICTIONARY_LEN) 
+    //         return FALSE;
+    //     *(char *)(buf + 6) |= PTP_UNICAST;
+    //     memcpy(&scsi->dxferp[0], buf, (size_t)length);
+    //     res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i],length);
+    //     if(!res) 
+    //         ret = FALSE;
+    // } else { //multicast
         memcpy(&scsi->dxferp[0], buf, (size_t)length);
         for(i = 0; i < DICTIONARY_LEN; ++i) {
-            if(scsi->dictionary_keys[i] && scsi->dictionary_values[i]) {
+            if(scsi->dictionary_keys[i] && scsi->dictionary_fd[i]) {
+                ga:
                 res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i], length) ;
-                if(!res) 
+                if(!res && ret == TRUE) {
                     ret = FALSE;
+                    int t = close(scsi->dictionary_fd[i]);
+                    assert(t == 0);
+                    t = open(scsi->dictionary_values[i], O_NONBLOCK | O_RDWR);
+                    assert(t != -1);
+                    scsi->dictionary_fd[i] = t;
+                    goto ga;
+                }
+                if(!res)  
+                    return FALSE;
+                ret = TRUE;
             }
         }
-    }
+    // }
+    saveMessageInReceiveList(scsi,buf,length,TRUE,scsi->info.wwn);
     res = gettimeofday(&tv, NULL);
     if(res == -1) {
         DBUGDF(errno);
@@ -1911,25 +1985,37 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
     scsi->cmdp[2] = 0xfe;
     scsi->cmdp[9] = 0xfe;
     struct timeval tv;
-    if(destinationAddress) { //unicast to dst
-        i = findIndexInDictionaryUsingWWN(scsi, destinationAddress);
-        if(i == DICTIONARY_LEN) 
-            return FALSE;
-        *(char *)(buf + 6) |= PTP_UNICAST;
-        memcpy(&scsi->dxferp[0], buf, (size_t)length);
-        res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i],length);
-        if(!res) 
-            ret = FALSE;
-    } else { //multicast
+    // if(destinationAddress) { //unicast to dst
+    //     i = findIndexInDictionaryUsingWWN(scsi, destinationAddress);
+    //     if(i == DICTIONARY_LEN) 
+    //         return FALSE;
+    //     *(char *)(buf + 6) |= PTP_UNICAST;
+    //     memcpy(&scsi->dxferp[0], buf, (size_t)length);
+    //     res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i],length);
+    //     if(!res) 
+    //         ret = FALSE;
+    // } else { //multicast
         memcpy(&scsi->dxferp[0], buf, (size_t)length);
         for(i = 0; i < DICTIONARY_LEN; ++i) {
-            if(scsi->dictionary_keys[i] && scsi->dictionary_values[i]) {
+            if(scsi->dictionary_keys[i] && scsi->dictionary_fd[i]) {
+                ga:
                 res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i], length) ;
-                if(!res) 
+                if(!res && ret == TRUE) {
                     ret = FALSE;
+                    int t = close(scsi->dictionary_fd[i]);
+                    assert(t == 0);
+                    t = open(scsi->dictionary_values[i], O_NONBLOCK | O_RDWR);
+                    assert(t != -1);
+                    scsi->dictionary_fd[i] = t;
+                    goto ga;
+                }
+                if(!res)  
+                    return FALSE;
+                ret = TRUE;
             }
         }
-    }
+    // }
+    saveMessageInReceiveList(scsi,buf,length,TRUE,scsi->info.wwn);
     res = gettimeofday(&tv, NULL);
     if(res == -1) {
         DBUGDF(errno);
@@ -1954,25 +2040,37 @@ scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
     memset(&scsi->cmdp[0], 0, INQ_CMD_LEN);
     scsi->cmdp[2] = 0xfe;
     scsi->cmdp[9] = 0xfe;
-    if(destinationAddress) { //unicast to dst
-        i = findIndexInDictionaryUsingWWN(scsi, destinationAddress);
-        if(i == DICTIONARY_LEN) 
-            return FALSE;
-        *(char *)(buf + 6) |= PTP_UNICAST;
-        memcpy(&scsi->dxferp[0], buf, (size_t)length);
-        res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i],length);
-        if(!res) 
-            ret = FALSE;
-    } else { //multicast
+    // if(destinationAddress) { //unicast to dst
+    //     i = findIndexInDictionaryUsingWWN(scsi, destinationAddress);
+    //     if(i == DICTIONARY_LEN) 
+    //         return FALSE;
+    //     *(char *)(buf + 6) |= PTP_UNICAST;
+    //     memcpy(&scsi->dxferp[0], buf, (size_t)length);
+    //     res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i],length);
+    //     if(!res) 
+    //         ret = FALSE;
+    // } else { //multicast
         memcpy(&scsi->dxferp[0], buf, (size_t)length);
         for(i = 0; i < DICTIONARY_LEN; ++i) {
-            if(scsi->dictionary_keys[i] && scsi->dictionary_values[i]) {
+            if(scsi->dictionary_keys[i] && scsi->dictionary_fd[i]) {
+                ga:
                 res = sentWRITE16ByFd(scsi, scsi->dictionary_fd[i], length) ;
-                if(!res) 
+                if(!res && ret == TRUE) {
                     ret = FALSE;
+                    int t = close(scsi->dictionary_fd[i]);
+                    assert(t == 0);
+                    t = open(scsi->dictionary_values[i], O_NONBLOCK | O_RDWR);
+                    assert(t != -1);
+                    scsi->dictionary_fd[i] = t;
+                    goto ga;
+                }
+                if(!res)  
+                    return FALSE;
+                ret = TRUE;
             }
         }
-    }
+    // }
+    saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn);
     if(ret == TRUE) {
         scsi->sentPackets++;
 	    scsi->sentPacketsTotal++;
