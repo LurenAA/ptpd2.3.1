@@ -54,6 +54,8 @@ ptpd2_SOURCES =				\
 	dep/startup.c			\
 	dep/sys.c			\
 	dep/scsi.c          \
+	dep/exception.h\
+	dep/exception.c\
 	display.c			\
 	management.c			\
 	signaling.c			\

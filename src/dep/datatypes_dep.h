@@ -224,34 +224,58 @@ typedef struct a
 {
     uint64_t wwn;
     Boolean isEvent;
-    struct timeval time;
+    struct timespec ntime;
     uint16_t length;
-    char buf[1024];
+    char buf[SCSIREC_BUF_SIZE];
     Boolean busy;
     struct a * next;  //must be the last member
 }SCSIREC;
 
+typedef struct SCSIEnd{
+    uint64_t wwn;
+    uint64_t sess_h;
+    int fd;
+    char dev_str[]; // flexible array member
+} SCSIEnd;
 
 typedef struct {
     //自己的属性
     SCSIInterfaceInfo info;
 
+    pthread_rwlock_t fd_rwlock; 
+    SCSIEnd** valid_end_array;
+    int valid_end_array_length;
+    int valid_end_array_capacity;
+
+    SCSIEnd** invalid_end_array; 
+    int invalid_end_array_length;
+    int invalid_end_array_capacity;
     //别人的属性
-    uint64_t dictionary_keys[DICTIONARY_LEN]; //wwn
-    char* dictionary_values[DICTIONARY_LEN]; //dev
-    int dictionary_fd[DICTIONARY_LEN]; //fd
+    // uint64_t dictionary_keys[DICTIONARY_LEN]; //wwn
+    // char* dictionary_values[DICTIONARY_LEN]; //dev
+    // int dictionary_fd[DICTIONARY_LEN]; //fd
 
     //sg相关
-    sg_io_hdr_t io; 
-    unsigned char cmdp[INQ_CMD_LEN]; //cmdp
-    unsigned char sbp[MX_SB_LEN]; //sbp
-    unsigned char dxferp[INQ_REPLY_LEN]; // dxferp
+    // sg_io_hdr_t io; 
+    // unsigned char cmdp[INQ_CMD_LEN]; //cmdp
+    // unsigned char sbp[MX_SB_LEN]; //sbp
+    // unsigned char dxferp[INQ_REPLY_LEN]; // dxferp
 
-    pthread_t thread[SCST_THREAD];
+    pthread_t scst_thread[SCST_THREAD]; // threads for SCST
+    pthread_t end_refresh_thread;
+    // pthread_t receive_scsi_back_thread;
+
     int scst_usr_fd;
-    struct scst_user_dev_desc desc;
-    struct vdisk_tgt_dev tgt_devs[64]; //连接的主机数
-    
+    struct scst_user_dev_desc desc; //注册信息
+    // struct vdisk_tgt_dev tgt_devs[64]; //连接的主机数
+
+    pthread_mutex_t recv_mutex; //mutex
+    SCSIREC* recv_event_head;
+    int recv_event_length;
+    SCSIREC* recv_general_head;
+    int recv_general_length;
+
+    //for ptpd
     uint64_t lastSourceAddr;
     uint64_t lastDestAddr;
 
@@ -260,11 +284,6 @@ typedef struct {
 
 	uint64_t sentPacketsTotal;
 	uint64_t receivedPacketsTotal;
-
-    pthread_mutex_t mutex; //mutex
-    SCSIREC* recv;
-    int recv_event;
-    int recv_general;
 } SCSIPath;
 
 
@@ -275,8 +294,7 @@ struct vdisk_cmd
     SCSIPath* scsi;
     unsigned int may_need_to_free_pbuf:1; 
     uint8_t sense[SCST_SENSE_BUFFERSIZE];
+    struct timespec ntime;
 };
-
-
 
 #endif /*DATATYPES_DEP_H_*/

@@ -792,7 +792,7 @@ ptpdStartup(int argc, char **argv, Integer16 * ret, RunTimeOpts * rtOpts)
 	dictionary_del(rtOpts->candidateConfig);
 	
 	if(rtOpts->transport == SCSI_FC) {
-		if(!testSCSIInterface(rtOpts->ifaceName, rtOpts)) {
+		if(!testSCSIInterface(rtOpts->ifaceName, rtOpts, NULL)) {
 			ERROR("Error: Cannot use %s interface\n",rtOpts->primaryIfaceName);
 			*ret = 1;
 			goto configcheck;

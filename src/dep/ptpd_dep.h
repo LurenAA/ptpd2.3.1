@@ -488,36 +488,8 @@ void updatePtpEngineStats (PtpClock* ptpClock, const RunTimeOpts* rtOpts);
 void writeStatusFile(PtpClock *ptpClock, const RunTimeOpts *rtOpts, Boolean quiet);
 void updateXtmp (TimeInternal oldTime, TimeInternal newTime);
 
-#ifdef SDEBUG
-#define PRINTLN(format, args...)  \
-do {  \
-    printf(format "\n", ## args);\
-} while(0) 
-#else 
-#define PRINTLN(format, args...) 
-#endif
 
-#define STR_HELPER(x) #x
-#define STR(x) STR_HELPER(x)  
-//__FUNCTION__ is a variable in gcc 
-#define PRINTLNDEBUGHELP(x ,y , z,format, args...)  \
-    PRINTLN(x " " STR(y) " %s  :" format, z ,##args)
-
-#define PRINTLNDEBUG(format, args...)                \
-    PRINTLNDEBUGHELP(__FILE__, __LINE__, __FUNCTION__, format, ## args)
-
-#define DDF(res) PRINTLNDEBUG("%s", strerror(res))  //Default debug function
-
-#define DBUGDFHELPER(s,ste, file, line, func) \
-  DBG(file " " STR(line) " %s : " s " \n", func,ste)
-#define DBUGDF(res)  \
-  DBUGDFHELPER("%s", strerror(res),__FILE__, __LINE__, __FUNCTION__);
-
-ssize_t scsiSendPeerEvent(Octet*,UInteger16,SCSIPath*,const RunTimeOpts*,uint64_t,TimeInternal*);
-Boolean testSCSIInterface(char * ifaceName, const RunTimeOpts* rtOpts);
-Boolean
-scsiRefresh(SCSIPath* scsi, const RunTimeOpts * rtOpts, PtpClock * ptpClock);
-ssize_t 
-scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
- const RunTimeOpts *rtOpts, uint64_t destinationAddress);
+Boolean testSCSIInterface(char * ifaceName, const RunTimeOpts* rtOpts, SCSIInterfaceInfo* info_ptr);
+ssize_t scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi, const RunTimeOpts *rtOpts, uint64_t destinationAddress);
+ssize_t scsiSendPeerEvent(Octet * buf, UInteger16 length, SCSIPath * scsi, const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim);
 #endif /*PTPD_DEP_H_*/

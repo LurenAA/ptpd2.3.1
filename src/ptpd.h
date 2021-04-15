@@ -171,7 +171,7 @@
 #include "dep/iniparser/dictionary.h"
 #include "dep/iniparser/iniparser.h"
 #include "dep/daemonconfig.h"
-
+#include "dep/exception.h"
 
 
 

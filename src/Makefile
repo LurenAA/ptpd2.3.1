@@ -156,12 +156,12 @@ am__ptpd2_SOURCES_DIST = arith.c bmc.c constants.h datatypes.h \
 	dep/iniparser/iniparser.h dep/iniparser/dictionary.c \
 	dep/iniparser/iniparser.c dep/daemonconfig.h \
 	dep/daemonconfig.c dep/startup.c dep/sys.c dep/scsi.c \
-	display.c management.c signaling.c protocol.c \
-	dep/ntpengine/ntp_isc_md5.c dep/ntpengine/ntp_isc_md5.h \
-	dep/ntpengine/ntpdcontrol.c dep/ntpengine/ntpdcontrol.h \
-	timingdomain.h timingdomain.c ptpd.c ptpd.h dep/snmp.c \
-	dep/statistics.h dep/statistics.c dep/outlierfilter.h \
-	dep/outlierfilter.c dep/eventtimer_posix.c \
+	dep/exception.h dep/exception.c display.c management.c \
+	signaling.c protocol.c dep/ntpengine/ntp_isc_md5.c \
+	dep/ntpengine/ntp_isc_md5.h dep/ntpengine/ntpdcontrol.c \
+	dep/ntpengine/ntpdcontrol.h timingdomain.h timingdomain.c \
+	ptpd.c ptpd.h dep/snmp.c dep/statistics.h dep/statistics.c \
+	dep/outlierfilter.h dep/outlierfilter.c dep/eventtimer_posix.c \
 	dep/eventtimer_itimer.c
 am__dirstamp = $(am__leading_dot)dirstamp
 am__objects_1 =
@@ -176,8 +176,9 @@ am_ptpd2_OBJECTS = arith.$(OBJEXT) bmc.$(OBJEXT) \
 	dep/servo.$(OBJEXT) dep/iniparser/dictionary.$(OBJEXT) \
 	dep/iniparser/iniparser.$(OBJEXT) dep/daemonconfig.$(OBJEXT) \
 	dep/startup.$(OBJEXT) dep/sys.$(OBJEXT) dep/scsi.$(OBJEXT) \
-	display.$(OBJEXT) management.$(OBJEXT) signaling.$(OBJEXT) \
-	protocol.$(OBJEXT) dep/ntpengine/ntp_isc_md5.$(OBJEXT) \
+	dep/exception.$(OBJEXT) display.$(OBJEXT) management.$(OBJEXT) \
+	signaling.$(OBJEXT) protocol.$(OBJEXT) \
+	dep/ntpengine/ntp_isc_md5.$(OBJEXT) \
 	dep/ntpengine/ntpdcontrol.$(OBJEXT) timingdomain.$(OBJEXT) \
 	ptpd.$(OBJEXT) $(am__objects_1) $(am__objects_2) \
 	$(am__objects_3) $(am__objects_4) $(am__objects_5)
@@ -208,12 +209,13 @@ am__depfiles_remade = ./$(DEPDIR)/arith.Po ./$(DEPDIR)/bmc.Po \
 	./$(DEPDIR)/ptpd.Po ./$(DEPDIR)/signaling.Po \
 	./$(DEPDIR)/timingdomain.Po dep/$(DEPDIR)/daemonconfig.Po \
 	dep/$(DEPDIR)/eventtimer.Po dep/$(DEPDIR)/eventtimer_itimer.Po \
-	dep/$(DEPDIR)/eventtimer_posix.Po dep/$(DEPDIR)/ipv4_acl.Po \
-	dep/$(DEPDIR)/msg.Po dep/$(DEPDIR)/net.Po \
-	dep/$(DEPDIR)/outlierfilter.Po dep/$(DEPDIR)/scsi.Po \
-	dep/$(DEPDIR)/servo.Po dep/$(DEPDIR)/snmp.Po \
-	dep/$(DEPDIR)/startup.Po dep/$(DEPDIR)/statistics.Po \
-	dep/$(DEPDIR)/sys.Po dep/iniparser/$(DEPDIR)/dictionary.Po \
+	dep/$(DEPDIR)/eventtimer_posix.Po dep/$(DEPDIR)/exception.Po \
+	dep/$(DEPDIR)/ipv4_acl.Po dep/$(DEPDIR)/msg.Po \
+	dep/$(DEPDIR)/net.Po dep/$(DEPDIR)/outlierfilter.Po \
+	dep/$(DEPDIR)/scsi.Po dep/$(DEPDIR)/servo.Po \
+	dep/$(DEPDIR)/snmp.Po dep/$(DEPDIR)/startup.Po \
+	dep/$(DEPDIR)/statistics.Po dep/$(DEPDIR)/sys.Po \
+	dep/iniparser/$(DEPDIR)/dictionary.Po \
 	dep/iniparser/$(DEPDIR)/iniparser.Po \
 	dep/ntpengine/$(DEPDIR)/ntp_isc_md5.Po \
 	dep/ntpengine/$(DEPDIR)/ntpdcontrol.Po
@@ -435,12 +437,12 @@ ptpd2_SOURCES = arith.c bmc.c constants.h datatypes.h \
 	dep/iniparser/iniparser.h dep/iniparser/dictionary.c \
 	dep/iniparser/iniparser.c dep/daemonconfig.h \
 	dep/daemonconfig.c dep/startup.c dep/sys.c dep/scsi.c \
-	display.c management.c signaling.c protocol.c \
-	dep/ntpengine/ntp_isc_md5.c dep/ntpengine/ntp_isc_md5.h \
-	dep/ntpengine/ntpdcontrol.c dep/ntpengine/ntpdcontrol.h \
-	timingdomain.h timingdomain.c ptpd.c ptpd.h $(NULL) \
-	$(am__append_2) $(am__append_3) $(am__append_4) \
-	$(am__append_5)
+	dep/exception.h dep/exception.c display.c management.c \
+	signaling.c protocol.c dep/ntpengine/ntp_isc_md5.c \
+	dep/ntpengine/ntp_isc_md5.h dep/ntpengine/ntpdcontrol.c \
+	dep/ntpengine/ntpdcontrol.h timingdomain.h timingdomain.c \
+	ptpd.c ptpd.h $(NULL) $(am__append_2) $(am__append_3) \
+	$(am__append_4) $(am__append_5)
 CSCOPE = cscope
 GTAGS = gtags
 DOXYGEN = doxygen
@@ -595,6 +597,8 @@ dep/startup.$(OBJEXT): dep/$(am__dirstamp) \
 	dep/$(DEPDIR)/$(am__dirstamp)
 dep/sys.$(OBJEXT): dep/$(am__dirstamp) dep/$(DEPDIR)/$(am__dirstamp)
 dep/scsi.$(OBJEXT): dep/$(am__dirstamp) dep/$(DEPDIR)/$(am__dirstamp)
+dep/exception.$(OBJEXT): dep/$(am__dirstamp) \
+	dep/$(DEPDIR)/$(am__dirstamp)
 dep/ntpengine/$(am__dirstamp):
 	@$(MKDIR_P) dep/ntpengine
 	@: > dep/ntpengine/$(am__dirstamp)
@@ -641,6 +645,7 @@ include dep/$(DEPDIR)/daemonconfig.Po # am--include-marker
 include dep/$(DEPDIR)/eventtimer.Po # am--include-marker
 include dep/$(DEPDIR)/eventtimer_itimer.Po # am--include-marker
 include dep/$(DEPDIR)/eventtimer_posix.Po # am--include-marker
+include dep/$(DEPDIR)/exception.Po # am--include-marker
 include dep/$(DEPDIR)/ipv4_acl.Po # am--include-marker
 include dep/$(DEPDIR)/msg.Po # am--include-marker
 include dep/$(DEPDIR)/net.Po # am--include-marker
@@ -925,6 +930,7 @@ distclean: distclean-am
 	-rm -f dep/$(DEPDIR)/eventtimer.Po
 	-rm -f dep/$(DEPDIR)/eventtimer_itimer.Po
 	-rm -f dep/$(DEPDIR)/eventtimer_posix.Po
+	-rm -f dep/$(DEPDIR)/exception.Po
 	-rm -f dep/$(DEPDIR)/ipv4_acl.Po
 	-rm -f dep/$(DEPDIR)/msg.Po
 	-rm -f dep/$(DEPDIR)/net.Po
@@ -997,6 +1003,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f dep/$(DEPDIR)/eventtimer.Po
 	-rm -f dep/$(DEPDIR)/eventtimer_itimer.Po
 	-rm -f dep/$(DEPDIR)/eventtimer_posix.Po
+	-rm -f dep/$(DEPDIR)/exception.Po
 	-rm -f dep/$(DEPDIR)/ipv4_acl.Po
 	-rm -f dep/$(DEPDIR)/msg.Po
 	-rm -f dep/$(DEPDIR)/net.Po

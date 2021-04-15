@@ -52,62 +52,31 @@
  */
 
 #include "ptpd.h"
-void 
-SCSIhandle(const RunTimeOpts *rtOpts, PtpClock *ptpClock);
-ssize_t 
-scsiSendEvent(Octet * buf, UInteger16 length, SCSIPath * scsi, 
-const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim);
-static uint64_t
-lookupSyncIndexSCSI(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntry *index);
-static TimeInternal
-issueSyncSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
-static void 
-issueAnnounceSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
-void
-handleSignalingSCSI(MsgHeader *header,Boolean isFromSelf, uint64_t sourceAddress, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
-static void
-issueManagementErrorStatusSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
-static void 
-issueManagementRespOrAckSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpts,
-		PtpClock *ptpClock);
-static void
-issuePdelayRespFollowUpSCSI(const TimeInternal *tint, MsgHeader *header, uint64_t dst,
-			     const RunTimeOpts *rtOpts, PtpClock *ptpClock, const UInteger16 sequenceId);
-static void 
-processPdelayRespFromSelfSCSI(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId);
-static void
-handlePdelayRespSCSI(const MsgHeader *header, TimeInternal *tint,
-		 ssize_t length, Boolean isFromSelf, uint64_t sourceAddress, uint64_t destinationAddress,
-		 const RunTimeOpts *rtOpts, PtpClock *ptpClock);
-static void 
-handlePdelayReqSCSI(MsgHeader *header, ssize_t length, 
-		const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf, 
-		const RunTimeOpts *rtOpts, PtpClock *ptpClock);
-static void
-issuePdelayRespSCSI(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,
-		PtpClock *ptpClock);
-static void
-issueDelayRespSCSI(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,
-		PtpClock *ptpClock);
-void handleDelayReqSCSI(const MsgHeader *header, ssize_t length, 
-	       const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf,
-	       const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+void SCSIhandle(const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+ssize_t scsiSendEvent(Octet * buf, UInteger16 length, SCSIPath * scsi, const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim);
+static uint64_t lookupSyncIndexSCSI(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntry *index);
+static TimeInternal issueSyncSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
+static void issueAnnounceSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
+void handleSignalingSCSI(MsgHeader *header,Boolean isFromSelf, uint64_t sourceAddress, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+static void issueManagementErrorStatusSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+static void issueManagementRespOrAckSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
+static void issuePdelayRespFollowUpSCSI(const TimeInternal *tint, MsgHeader *header, uint64_t dst,const RunTimeOpts *rtOpts, PtpClock *ptpClock, const UInteger16 sequenceId);
+static void processPdelayRespFromSelfSCSI(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId);
+static void handlePdelayRespSCSI(const MsgHeader *header, TimeInternal *tint,ssize_t length, Boolean isFromSelf, uint64_t sourceAddress, uint64_t destinationAddress,const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+static void handlePdelayReqSCSI(MsgHeader *header, ssize_t length, const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+static void issuePdelayRespSCSI(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
+static void issueDelayRespSCSI(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
+void handleDelayReqSCSI(const MsgHeader *header, ssize_t length, const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf,const RunTimeOpts *rtOpts, PtpClock *ptpClock);
 ssize_t scsiRecvGeneral(Octet * buf, SCSIPath* scsi);
 Boolean scsiShutdown(SCSIPath* scsi);
 Boolean SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock);
 Boolean doInit(RunTimeOpts*,PtpClock*);
 static void doState(const RunTimeOpts*,PtpClock*);
-static void 
-handleSyncSCSI(const MsgHeader *header, ssize_t length, 
-	   TimeInternal *tint, Boolean isFromSelf, uint64_t sourceAddress, uint64_t destinationAddress,
-	   const RunTimeOpts *rtOpts, PtpClock *ptpClock);
-Boolean 
-scsiSendGeneral(Octet * buf, UInteger16 length, SCSIPath * scsi, const RunTimeOpts *rtOpts, uint64_t destinationAddress);
-static void
-issueFollowupSCSI(const TimeInternal *tint,const RunTimeOpts *rtOpts,PtpClock *ptpClock, uint64_t dst, UInteger16 sequenceId);
+static void handleSyncSCSI(const MsgHeader *header, ssize_t length, TimeInternal *tint, Boolean isFromSelf, uint64_t sourceAddress, uint64_t destinationAddress,const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+Boolean scsiSendGeneral(Octet * buf, UInteger16 length, SCSIPath * scsi, const RunTimeOpts *rtOpts, uint64_t destinationAddress);
+static void issueFollowupSCSI(const TimeInternal *tint,const RunTimeOpts *rtOpts,PtpClock *ptpClock, uint64_t dst, UInteger16 sequenceId);
 void handle(const RunTimeOpts*,PtpClock*);
-static void
-processSyncFromSelfSCSI(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId);
+static void processSyncFromSelfSCSI(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId);
 static void handleAnnounce(MsgHeader*, ssize_t,Boolean, const RunTimeOpts*,PtpClock*);
 static void handleSync(const MsgHeader*, ssize_t,TimeInternal*,Boolean,Integer32, Integer32, const RunTimeOpts*,PtpClock*);
 static void handleFollowUp(const MsgHeader*, ssize_t,Boolean,const RunTimeOpts*,PtpClock*);
@@ -290,12 +259,7 @@ findSyncDestination(TimeInternal *timeStamp, const RunTimeOpts *rtOpts, PtpClock
 }
 
 void addForeign(Octet*,MsgHeader*,PtpClock*, UInteger8);
-long myclock()
-{
-    static struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (tv.tv_sec * 1000000) + tv.tv_usec;
-}
+
 // static Boolean sg_read = FALSE;
 // void srd(int d) {
 // 	DBG("vvvvvvvvvvvvvvvvvvvvvvvvv\n");
@@ -329,7 +293,6 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
 	if(rtOpts->statusLog.logEnabled)
 		writeStatusFile(ptpClock, rtOpts, TRUE);
-	long lasttime = myclock();
 	// signal(SIGPOLL, srd);
 	for (;;)
 	{
@@ -374,11 +337,6 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
 		if (timerExpired(&ptpClock->timers[TIMINGDOMAIN_UPDATE_TIMER])) {
 		    timingDomain.update(&timingDomain);
-		}
-
-		if(myclock() - lasttime > 30 * 1000000) {
-			lasttime = myclock();
-			scsiRefresh(&ptpClock->SCSIPath, rtOpts,ptpClock);
 		}
 
 		if (timerExpired(&ptpClock->timers[UNICAST_GRANT_TIMER])) {
@@ -768,6 +726,7 @@ doInit(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		MANUFACTURER_ID_OUI1,
 		MANUFACTURER_ID_OUI2);
 	/* initialize networking */
+
 	if(rtOpts->transport != SCSI_FC) {
 		netShutdown(&ptpClock->netPath);
 
@@ -1504,9 +1463,9 @@ SCSIhandle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	ssize_t length = -1;
 	SCSIPath* scsi = &ptpClock->SCSIPath;
 
-	if(scsi->recv_event > 0) {
+	if(scsi->recv_event_length > 0) {
 		length = scsiRecvEvent(ptpClock->msgIbuf, &timeStamp, &ptpClock->SCSIPath,0);
-		if(length < 0 ){
+		if(length <= 0 ){
 			PERROR("failed to receive on the event socket");
 			toState(PTP_FAULTY, rtOpts, ptpClock);
 			ptpClock->counters.messageRecvErrors++;
@@ -1519,9 +1478,9 @@ SCSIhandle(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	    }
 	}
 
-	if(scsi->recv_general > 0) {
+	if(scsi->recv_general_length > 0) {
 		length = scsiRecvGeneral(ptpClock->msgIbuf,&ptpClock->SCSIPath);
-		if (length < 0) {
+		if (length <= 0) {
 			PERROR("failed to receive on the general socket");
 			toState(PTP_FAULTY, rtOpts, ptpClock);
 			ptpClock->counters.messageRecvErrors++;

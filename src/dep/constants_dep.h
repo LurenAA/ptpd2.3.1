@@ -265,6 +265,18 @@ enum {
 #define HEX 16
 #define WWN_BEGIN 24
 #define WWN_INQ_ID "ptpinq"
+#define SCST_USER_DEV "/dev/scst_user"
+#define DEVICE_NAME "fc_ptp"
+#define INITIALIZE_SCST_COMMAND "scstadmin -config /etc/scst.conf"
+#define STR_ERROR_STR_BUF_LENGTH 64
+#define END_FRESH_BUF_SIZE 1024
+#define SCST_ADMIN_ERROR_INFO "FATAL"
+#define END_FRESH_TIME_INTERVAL 10 * 1000000
+#define LOAD_ "- - -"
+#define INDEXN (sizeof("/sys/class/scsi_host/hostn") - 2)
+#define DEFAULT_SCSI_END_SIZE 16
+#define SCSIEND_DEFAULT_STR_LENGTH 128
+#define SCSIREC_BUF_SIZE 1024
 
 #define INQ_CMD_LEN 16
 #define MX_SB_LEN 32
