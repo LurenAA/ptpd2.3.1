@@ -178,9 +178,11 @@ static thread_local unsigned char dxferp[INQ_REPLY_LEN];
 #define PLHUP(res) (res & POLLHUP)
 #define PLERROR(res) (res & POLLERR)
 
+
+
 //enum
 typedef enum {
-    END_FD, END_STR, END_WWN, END_SESS
+    END_FD, END_STR, END_WWN, END_SESS, END_DEV_STR_CAPACITY
 }END_VALUE_TYPE;
 typedef enum {
     VALID_ARRAY = 101, INVALID_ARRAY 
@@ -188,6 +190,9 @@ typedef enum {
 typedef enum {
     END_MALLOC_NEW, END_ADD_TO_VALID 
 } END_ADD_TYPE;
+typedef enum {
+    TGT_WWN, TGT_SESS, TGT_STR
+} TGT_TYPE;
 
 //function
 static Boolean Command(SCSIPath* scsi, int fd, int type, const unsigned char* str, int len);
@@ -196,6 +201,9 @@ static int checkPollSingle(int fd, short flags);
 static void setEndValue(SCSIPath* scsi, SCSIEnd* end_ptr, END_VALUE_TYPE type,...);
 static SCSIEnd* removeEnd(SCSIPath* scsi, END_ARRAY_TYPE type, int index, Boolean freeSource);
 static int readSCSI(SCSIPath* scsi, int fd, sg_io_hdr_t* io);
+vdisk_tgt_dev* findtgtDev(SCSIPath* scsi, TGT_TYPE type, uint64_t x);
+vdisk_tgt_dev* createNewTgtDev(SCSIPath* scsi);
+void setTgtValue(vdisk_tgt_dev* dsk, TGT_TYPE type, ...);
 
 static void cleanUpWRLock(void* arg) {
     assert(arg);
@@ -251,9 +259,16 @@ static
 void setEndValue(SCSIPath* scsi, SCSIEnd* end_ptr, END_VALUE_TYPE type,...) {
     assert(end_ptr);
     int res;
-
+    const char* str = NULL;
+    int length = 0;
     va_list ap;
     va_start(ap, type);
+
+    if(type == END_STR) {
+        str = va_arg(ap, const char*);
+        length = va_arg(ap, int);
+    }
+    
     switch(type) {
         case END_FD:
             if(!end_ptr->fd) 
@@ -274,10 +289,16 @@ void setEndValue(SCSIPath* scsi, SCSIEnd* end_ptr, END_VALUE_TYPE type,...) {
             }
             break;
         case END_STR:
-            strncpy(end_ptr->dev_str, va_arg(ap, char*), va_arg(ap, int));
+            strncpy(end_ptr->dev_str, str, length);
             break;  
         case END_WWN:
             end_ptr->wwn = va_arg(ap, uint64_t);
+            break;
+        case END_SESS:
+            end_ptr->sess_h = va_arg(ap, uint64_t);
+            break;
+        case END_DEV_STR_CAPACITY:
+            end_ptr->dev_str_capacity = va_arg(ap, int);
             break;
         default:
             RAISE(EINVAL_ERROR);  
@@ -290,7 +311,24 @@ SCSIEnd* findEndHelper(END_VALUE_TYPE type, SCSIEnd** array,int len, int capacit
     int i;
     const char* str;
     int fd;
+    int str_len;
     uint64_t sess;
+
+    switch(type) {
+        case END_STR:
+            str = va_arg(ap, const char*);
+            str_len = va_arg(ap, int);
+            assert(str_len >= 1);
+            break;
+        case END_FD:
+            fd = va_arg(ap, int);
+            break;
+        case END_SESS:
+            sess = va_arg(ap, uint64_t);
+            break;
+        default:
+            RAISE(EINVAL_ERROR);
+    }
 
     if(len) {
         assert(array);
@@ -298,19 +336,14 @@ SCSIEnd* findEndHelper(END_VALUE_TYPE type, SCSIEnd** array,int len, int capacit
             if(array[i]) {
                 switch(type) {
                     case END_STR:
-                        str = va_arg(ap, const char*);
-                        len = va_arg(ap, int);
-                        assert(len >= 1);
-                        if(!strncmp(array[i]->dev_str, str, len))
+                        if(!strncmp(array[i]->dev_str, str, str_len))
                             return array[i];
                         break;
                     case END_FD:
-                        fd = va_arg(ap, int);
                         if(array[i]->fd == fd) 
                             return array[i];
                         break;
-                    case END_SESS:
-                        sess = va_arg(ap, uint64_t);
+                    case END_SESS:    
                         if(array[i]->sess_h == sess)
                             return array[i];
                         break;
@@ -331,12 +364,12 @@ SCSIEnd* findEnd(SCSIPath* scsi, END_VALUE_TYPE type, ...) {
 
     va_start(ap, type);
     va_copy(bp, ap);
-    end_ptr = findEndHelper(VALID_ARRAY,  scsi->valid_end_array, scsi->valid_end_array_length, scsi->invalid_end_array_capacity, ap);
+    end_ptr = findEndHelper(type,  scsi->valid_end_array, scsi->valid_end_array_length, scsi->invalid_end_array_capacity, ap);
     if(end_ptr)
         return end_ptr;
     va_end(ap);
 
-    end_ptr = findEndHelper(INVALID_ARRAY, scsi->invalid_end_array,scsi->invalid_end_array_length, scsi->invalid_end_array_capacity,bp);
+    end_ptr = findEndHelper(type, scsi->invalid_end_array,scsi->invalid_end_array_length, scsi->invalid_end_array_capacity,bp);
     va_end(bp);
     return end_ptr;
 }
@@ -345,18 +378,18 @@ void checkEndArrayCapacity(SCSIPath* scsi, END_ARRAY_TYPE type) {
     assert(scsi);
 
     int *length = (type == INVALID_ARRAY ? &scsi->invalid_end_array_length : &scsi->valid_end_array_length);
-    int *capacity = (type == INVALID_ARRAY? &scsi->invalid_end_array_capacity: &scsi->valid_end_array_length);
-    SCSIEnd** array = (type == INVALID_ARRAY? scsi->invalid_end_array : scsi->valid_end_array);
+    int *capacity = (type == INVALID_ARRAY? &scsi->invalid_end_array_capacity: &scsi->valid_end_array_capacity);
+    SCSIEnd*** array = (type == INVALID_ARRAY? &scsi->invalid_end_array : &scsi->valid_end_array);
 
     if(*capacity == 0) {
-        array = malloc(sizeof(array[0]) * DEFAULT_SCSI_END_SIZE);
-        if(!array)
+        *array = malloc(sizeof((*array)[0]) * DEFAULT_SCSI_END_SIZE);
+        if(!*array)
             RAISE(MALLOC_ERROR);
         *capacity = DEFAULT_SCSI_END_SIZE;
     } 
     else if (*length == *capacity) {
-        array = realloc(array, (*capacity + DEFAULT_SCSI_END_SIZE) * sizeof(array[0]));
-        if(!array)
+        *array = realloc(*array, (*capacity + DEFAULT_SCSI_END_SIZE) * sizeof((*array)[0]));
+        if(!*array)
             RAISE(REALLOC_ERROR);
         *capacity += DEFAULT_SCSI_END_SIZE;
     } else if(*length > *capacity)
@@ -374,10 +407,12 @@ SCSIEnd* addEnd(SCSIPath* scsi, END_ADD_TYPE type, ...) {
         int alloc_len = str_len + 1 + sizeof(*end_ptr);
 
         checkEndArrayCapacity(scsi, INVALID_ARRAY);
-
+    
         end_ptr = calloc(1, alloc_len);
         if(!end_ptr)
             RAISE(CALLOC_ERROR);
+        setEndValue(scsi, end_ptr, END_DEV_STR_CAPACITY, str_len);
+
         for(i = 0; i < scsi->invalid_end_array_capacity; ++i) {
             if(!scsi->invalid_end_array[i]) {
                 scsi->invalid_end_array[i] = end_ptr;
@@ -495,7 +530,7 @@ Boolean scsiinterfaceExist(const char* ifaceName) {
     for(direntp = readdir(dirp); 
     direntp != NULL; 
     direntp = readdir(dirp)) {
-        if(!strcmp(&direntp->d_name[0], "node_name")) {
+        if(!strcmp(&direntp->d_name[0], "port_name")) {
             ++node_name_number;
         }
         else if(!strcmp(&direntp->d_name[0], "port_state")) {
@@ -536,7 +571,7 @@ Boolean getSCSIInterfaceInfo(const char* ifaceName, SCSIInterfaceInfo* info) {
         fileName[len] = '/';
         ++len;
     }
-    strcat(&fileName[0], "node_name");
+    strcat(&fileName[0], "port_name");
 
     fd = open(&fileName[0], O_RDONLY);
     if(fd == -1) 
@@ -642,9 +677,11 @@ Boolean scsiShutdown(SCSIPath* scsi) {
             }
         }
     }
-    res = pthread_cancel(scsi->end_refresh_thread);
-    if(res && res != ESRCH)
-        RAISE(PTHREAD_CANCEL_ERROR);
+    if(scsi->end_refresh_thread) {
+        res = pthread_cancel(scsi->end_refresh_thread);
+        if(res && res != ESRCH)
+            RAISE(PTHREAD_CANCEL_ERROR);
+    }
     
     // res = pthread_cancel(scsi->receive_scsi_back_thread);
     // if(res && res != ESRCH) 
@@ -659,10 +696,26 @@ Boolean scsiShutdown(SCSIPath* scsi) {
         }
     }
 
-    res = pthread_join(scsi->end_refresh_thread, NULL);
-    if(res)
-        RAISE(PTHREAD_JOIN_ERROR);
+    if(scsi->end_refresh_thread) {
+        res = pthread_join(scsi->end_refresh_thread, NULL);
+        if(res) {
+            DBG("pthread_join end_refresh_thread error: %s\n", STRERROR(res));
+            RAISE(PTHREAD_JOIN_ERROR);
+        }
+    }
     
+    if(scsi->sess_array_capacity > 0) {
+        if(scsi->sess_array_length > 0) {
+            for(i = 0; i < scsi->sess_array_capacity; ++i) {
+                if(scsi->sess_array[i] && scsi->sess_array[i]->str)
+                    free(scsi->sess_array[i]->str);
+                free(scsi->sess_array[i]);
+                scsi->sess_array[i] = NULL;
+            }
+        }
+
+        free(scsi->sess_array);
+    }
     // res = pthread_join(scsi->receive_scsi_back_thread, NULL);
     // if(res) 
     //     RAISE(PTHREAD_JOIN_ERROR);
@@ -684,9 +737,10 @@ Boolean scsiShutdown(SCSIPath* scsi) {
         free((void*)recv_ptr);
         recv_ptr = recv_ptr_h;
     }
-
-    freeEndArray(scsi->valid_end_array, scsi->valid_end_array_length, scsi->valid_end_array_capacity);
-    freeEndArray(scsi->invalid_end_array, scsi->invalid_end_array_length, scsi->invalid_end_array_capacity);
+    if(scsi->valid_end_array)
+        freeEndArray(scsi->valid_end_array, scsi->valid_end_array_length, scsi->valid_end_array_capacity);
+    if(scsi->invalid_end_array)
+        freeEndArray(scsi->invalid_end_array, scsi->invalid_end_array_length, scsi->invalid_end_array_capacity);
 
     res = pthread_rwlock_destroy(&scsi->fd_rwlock);
     if(res)
@@ -800,7 +854,7 @@ Boolean sendSCSI(sg_io_hdr_t *io, int fd) {
     assert(io->cmd_len <= 16 && io->cmd_len >= 6 && io->cmdp);
 
     res = checkPollSingle(fd, POLLOUT);
-    if(!PLREAD(res)) {
+    if(!PLWRITE(res)) {
         DBG("checkPollSingle fails\n");
         return FALSE;
     }
@@ -915,6 +969,7 @@ int readSCSI(SCSIPath* scsi, int fd, sg_io_hdr_t* io) {
     assert(scsi);
     assert(io);
     int res;
+    Boolean ret = TRUE;
     memset(io->cmdp, 0, sizeof(INQ_CMD_LEN));
     memset(io->dxferp, 0, sizeof(MX_SB_LEN));
     memset(io->sbp, 0, sizeof(INQ_REPLY_LEN));
@@ -928,15 +983,15 @@ int readSCSI(SCSIPath* scsi, int fd, sg_io_hdr_t* io) {
     if(res == -1) {
         res = errno;
         DBG("read failed : %s", STRERROR(res));
-        return FALSE;
+        ret = FALSE;
     }
     if(res != sizeof(sg_io_hdr_t)) {
         DBG("read failed : %s", STRERROR(EIO));
-        return FALSE;
+        ret = FALSE;
     }
     
     pthread_cleanup_pop(1);
-    return res;
+    return ret;
 }
 
 //扫描本地scsi设备,发送请求
@@ -999,6 +1054,7 @@ void parseINQUIRY(SCSIPath* scsi, SCSIEnd* end_ptr, sg_io_hdr_t* io) {
     int alloc_len;
     unsigned char* buf = (unsigned char*)io->dxferp;
     uint64_t wwn = 0;
+    vdisk_tgt_dev* dsk_ptr = NULL;
 
     alloc_len = (int)buf[4] + 4;
     if(alloc_len < 31) {
@@ -1008,6 +1064,12 @@ void parseINQUIRY(SCSIPath* scsi, SCSIEnd* end_ptr, sg_io_hdr_t* io) {
 
     for(int n =0 ; n < 8; ++n) 
         wwn = (wwn << 8) |  (buf[WWN_BEGIN + n] & 0xff);
+    
+    dsk_ptr = findtgtDev(scsi, TGT_WWN, wwn);
+    if(dsk_ptr) {
+        if(dsk_ptr->sess_h) 
+            setEndValue(scsi, end_ptr, END_SESS, dsk_ptr->sess_h);
+    }
     setEndValue(scsi, end_ptr, END_WWN, wwn);
 
     return ;
@@ -1138,25 +1200,43 @@ countNumberInString(const char* str, int len) {
     return num;
 }
 
+static void 
+removeTgtDev(SCSIPath* scsi, vdisk_tgt_dev* dsk) {
+    assert(scsi && dsk);
+
+    for(int i = 0; i < scsi->sess_array_capacity; ++i) {
+        if(scsi->sess_array[i] == dsk) {
+            if(dsk->str) 
+                free(dsk->str);
+            free(dsk);
+            scsi->sess_array[i] = NULL;
+            scsi->sess_array_length--;
+            return ;
+        }
+    }
+}
+
 static 
 Boolean do_sess(struct vdisk_cmd* vcmd) {
     Boolean res =  TRUE;
     struct scst_user_get_cmd *cmd = vcmd->cmd;
     struct scst_user_reply_cmd *reply = vcmd->reply;
-    SCSIEnd* end_ptr = NULL;
+    SCSIPath* scsi = vcmd->scsi;
+    vdisk_tgt_dev* dsk_ptr;
     
-    end_ptr = findEnd(vcmd->scsi, END_SESS, cmd->sess.sess_h);
+    dsk_ptr = findtgtDev(scsi, TGT_SESS, cmd->sess.sess_h);
     if (cmd->subcode == SCST_USER_ATTACH_SESS) {
         DBG("sess initiator: %s \n", cmd->sess.initiator_name);
-        if (end_ptr != NULL) {
+        if (dsk_ptr != NULL) {
             DBG("SCST_USER_ATTACH_SESS: %s\n", STRERROR(EEXIST));
             res = FALSE;
             goto reply1;
         }
 
-        end_ptr = addEnd(vcmd->scsi, END_MALLOC_NEW, SCSIEND_DEFAULT_STR_LENGTH);
+        dsk_ptr = createNewTgtDev(scsi);
+        setTgtValue(dsk_ptr, TGT_SESS, cmd->sess.sess_h);
+        setTgtValue(dsk_ptr, TGT_STR, cmd->sess.initiator_name);
 
-        setEndValue(vcmd->scsi, end_ptr, END_SESS, cmd->sess.sess_h);
         if(countNumberInString(&cmd->sess.initiator_name[0], 
         strlen(&cmd->sess.initiator_name[0])) == 16) {
             char* pch;
@@ -1167,15 +1247,15 @@ Boolean do_sess(struct vdisk_cmd* vcmd) {
                 wwn += strtoul(pch, NULL, 16);
                 pch = strtok(NULL, ":");
             }
-            setEndValue(vcmd->scsi, end_ptr, END_WWN, wwn);
+            setTgtValue(dsk_ptr, TGT_WWN, wwn);
         }
     } else {
-        if(end_ptr == NULL) {
+        if(dsk_ptr == NULL) {
             DBG("SCST_USER_DETTACH_SESS: %s \n", STRERROR(ESRCH));
             res = FALSE;
             goto reply1;
         }
-        setEndValue(vcmd->scsi, end_ptr, END_SESS, 0);
+        removeTgtDev(scsi, dsk_ptr);
     }
 reply1:
     memset(reply, 0, sizeof(*reply));
@@ -1299,6 +1379,68 @@ do_tm(struct vdisk_cmd *vcmd, int done){
     return res;
 }
 
+vdisk_tgt_dev* findtgtDev(SCSIPath* scsi, TGT_TYPE type, uint64_t x) {
+    assert(scsi);
+    for(int i = 0; i < scsi->sess_array_capacity; ++i) {
+        if(scsi->sess_array[i]) {
+            if(type == TGT_WWN) {
+                if(x == scsi->sess_array[i]->wwn) 
+                    return scsi->sess_array[i];
+            } else if(type == TGT_SESS) {
+                if(x == scsi->sess_array[i]->sess_h)
+                    return scsi->sess_array[i];
+            } else {
+                assert(0);
+            }
+        }    
+    }
+    return NULL;
+}
+
+vdisk_tgt_dev* createNewTgtDev(SCSIPath* scsi) {
+    assert(scsi);
+
+    if(scsi->sess_array_length == scsi->sess_array_capacity) {
+        scsi->sess_array = realloc(scsi->sess_array,  sizeof(scsi->sess_array[0])*(scsi->sess_array_length + DEV_SESS_NUMBER));
+        if(scsi->sess_array) 
+            RAISE(REALLOC_ERROR);
+        scsi->sess_array_capacity += DEV_SESS_NUMBER;
+    } else if( scsi->sess_array_length > scsi->sess_array_capacity)
+        assert(0);
+
+    for(int i = 0; i < scsi->sess_array_capacity; ++i) {
+        if(!scsi->sess_array[i]) {
+            scsi->sess_array[i] = malloc(sizeof(*scsi->sess_array[i]));
+            ++scsi->sess_array_length;
+            return scsi->sess_array[i];
+        }
+    }
+    assert(0);
+    return NULL;
+}
+
+void setTgtValue(vdisk_tgt_dev* dsk, TGT_TYPE type, ...) {
+    assert(dsk);
+    const char* rp;
+    va_list ap;
+    va_start(ap, type);
+    switch(type) {
+        case TGT_SESS:
+            dsk->sess_h = va_arg(ap, uint64_t);
+            break;
+        case TGT_WWN:
+            dsk->wwn = va_arg(ap, uint64_t);
+            break;
+        case TGT_STR:
+            rp = va_arg(ap,const char*);
+            dsk->str = strdup(rp);
+            break;
+        default:
+            assert(0);
+    }
+    va_end(ap);
+}
+
 static void
 saveMessageInReceiveList(SCSIPath* scsi, char* pbuf, int length, Boolean isEvent, uint64_t wwn, struct timespec ntime) {
     int res;
@@ -1356,7 +1498,7 @@ saveMessageInReceiveList(SCSIPath* scsi, char* pbuf, int length, Boolean isEvent
  *  obselete this : cdb[9] == 0xff && cdb[2] == 0xff  master -> slave wwn 
  *  cdb[9] == 0xfe && dfb[2] == 0xfe  ptpd   
  **/ 
-static void exec_write(struct vdisk_cmd *vcmd, SCSIEnd* end_ptr) {
+static void exec_write(struct vdisk_cmd *vcmd, vdisk_tgt_dev* dsk_ptr) {
     struct scst_user_scsi_cmd_exec *cmd = &vcmd->cmd->exec_cmd;
     uint8_t *cdb = cmd->cdb;
     char* pbuf = (char*)cmd->pbuf;
@@ -1379,7 +1521,7 @@ static void exec_write(struct vdisk_cmd *vcmd, SCSIEnd* end_ptr) {
             }
         }
 
-        saveMessageInReceiveList(scsi, pbuf, length, isEvent, end_ptr->wwn, vcmd->ntime);
+        saveMessageInReceiveList(scsi, pbuf, length, isEvent, dsk_ptr->wwn, vcmd->ntime);
     } 
     return ;
 }
@@ -1451,7 +1593,7 @@ do_exec(struct vdisk_cmd *vcmd) {
     struct scst_user_scsi_cmd_exec* cmd = &vcmd->cmd->exec_cmd;
     uint8_t *cdb = cmd->cdb;
     unsigned int opcode = cdb[0];
-    SCSIEnd* end_ptr;
+    vdisk_tgt_dev* dsk_ptr;
 
     memset(vcmd->reply,0 , sizeof(*vcmd->reply));
     vcmd->reply->cmd_h = vcmd->cmd->cmd_h;
@@ -1477,7 +1619,7 @@ do_exec(struct vdisk_cmd *vcmd) {
     //show opcode 
     unsigned int j = 0;
     
-    flockfile(stdout);
+    // flockfile(stdout);
     for(; j < ARRAY_SIZE(scsi_opcode);++j) {
         if(opcode == scsi_opcode[j])
             break;
@@ -1485,11 +1627,9 @@ do_exec(struct vdisk_cmd *vcmd) {
     if(j >= ARRAY_SIZE(scsi_opcode)) {
         printf("log: opcode out of range \n");
     } else {
-        printf("------------------------------------\n");
-        printf("          log: opcode = %s\n", scsi_opcode_string[j]);
-        printf("------------------------------------\n");
+        printf("@@@@@@@log: opcode = %s\n", scsi_opcode_string[j]);
     }
-    funlockfile(stdout);
+    // funlockfile(stdout);
 #endif    
     switch (opcode) {
         case INQUIRY:
@@ -1499,13 +1639,13 @@ do_exec(struct vdisk_cmd *vcmd) {
         case WRITE_10:
         case WRITE_12:
         case WRITE_16:
-            end_ptr = findEnd(vcmd->scsi, END_SESS, cmd->sess_h);
-            if(end_ptr == NULL) {
+            dsk_ptr = findtgtDev(vcmd->scsi, TGT_SESS, cmd->sess_h);
+            if(dsk_ptr == NULL) {
                 set_cmd_error(vcmd,
 				    SCST_LOAD_SENSE(scst_sense_hardw_error));
 				return res;
             }
-            exec_write(vcmd, end_ptr);
+            exec_write(vcmd, dsk_ptr);
             break;
     }
     return res;
@@ -1714,6 +1854,27 @@ void updateValidEnd(SCSIPath* scsi) {
     }    
 }
 
+void SendAllInquiry(SCSIPath* scsi) {
+    int i = 0;
+    int res;
+    for(i = 0; i < scsi->invalid_end_array_capacity; ++i) {
+        if(scsi->invalid_end_array[i] && scsi->invalid_end_array[i]->fd) {
+            res = CINQUIRY(scsi->invalid_end_array[i]->fd);
+            if(!res) {
+                DBG("sentINQUIRYByFd fails\n");
+        }
+        } 
+    }
+    for(i = 0; i < scsi->valid_end_array_capacity; ++i) {
+        if(scsi->valid_end_array[i] && scsi->valid_end_array[i]->fd) {
+            res = CINQUIRY(scsi->valid_end_array[i]->fd);
+            if(!res) {
+                DBG("sentINQUIRYByFd fails\n");
+            }
+        } 
+    }
+}
+
 void* end_fresh_loop(void* arg) {
     assert(arg);
 
@@ -1721,7 +1882,7 @@ void* end_fresh_loop(void* arg) {
     char buf[END_FRESH_BUF_SIZE] = {0};
     char* line;
     FILE* pp;
-    long timenow;
+    long timenow, timeforinquiry;
 
     pp = popen("scstadmin -config /etc/scst.conf", "r");
     if(!pp)
@@ -1737,7 +1898,10 @@ void* end_fresh_loop(void* arg) {
     if(pclose(pp) == -1)
         RAISE(PCLOSE_ERROR);
 
+    refresh(scsi);
+    scanSCSIEquipmemt(scsi);
     timenow = myclock();
+    timeforinquiry = myclock();
     while(1) {
         pthread_testcancel();
 
@@ -1745,6 +1909,11 @@ void* end_fresh_loop(void* arg) {
             refresh(scsi);
             scanSCSIEquipmemt(scsi);
             timenow = myclock();
+        }
+
+        if(myclock() - timeforinquiry >= (END_FRESH_TIME_INTERVAL / 4)) {
+            SendAllInquiry(scsi);
+            timeforinquiry = myclock();
         }
 
         readFromTarget(scsi);
@@ -1772,6 +1941,11 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     scsi->scst_usr_fd = open(SCST_USER_DEV, O_RDWR | O_NONBLOCK);
     if(scsi->scst_usr_fd == -1) 
         RAISE(OPEN_ERROR);
+    
+    scsi->sess_array = malloc(sizeof(*scsi->sess_array) * DEV_SESS_NUMBER);
+    if(!scsi->sess_array)
+        RAISE(MALLOC_ERROR);
+    scsi->sess_array_capacity = DEV_SESS_NUMBER;
 
     memset(&scsi->desc, 0, sizeof(scsi->desc));
     scsi->desc.version_str = (unsigned long)DEV_USER_VERSION;
@@ -1926,6 +2100,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
     int i;
     Boolean res = TRUE, ret = TRUE;
     refreshSGIO();
+    int sendn = 0;
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
     for(i = 0; i < scsi->valid_end_array_capacity; i++) {
@@ -1936,12 +2111,15 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
                 DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
                 continue;
             }
+            ++sendn;
         }
     }
-    saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
-    if(ret == TRUE) {
-        scsi->sentPackets++;
-	    scsi->sentPacketsTotal++;
+    if(sendn > 0) {
+        saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
+        if(ret == TRUE) {
+            scsi->sentPackets++;
+            scsi->sentPacketsTotal++;
+        }
     }
     return ret;
 }
@@ -1953,6 +2131,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
     struct timespec ntime;
     int i;
     Boolean res = TRUE, ret = TRUE;
+    int sendn = 0;
     refreshSGIO();
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
@@ -1964,20 +2143,23 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
                 DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
                 continue;
             }
+            ++sendn;
         }
     }
-    res = clock_gettime(CLOCK_REALTIME, &ntime);
-    if(res == -1) {
-        res = errno;
-        DBG("scsiSendEvent->clock_gettime: %s", STRERROR(res));
-        RAISE(GENER_ERROR);
-    }
-    tim->seconds = ntime.tv_sec;
-    tim->nanoseconds = ntime.tv_nsec;
-    saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
-    if(ret == TRUE) {
-        scsi->sentPackets++;
-	    scsi->sentPacketsTotal++;
+    if(sendn > 0) {
+        res = clock_gettime(CLOCK_REALTIME, &ntime);
+        if(res == -1) {
+            res = errno;
+            DBG("scsiSendEvent->clock_gettime: %s", STRERROR(res));
+            RAISE(GENER_ERROR);
+        }
+        tim->seconds = ntime.tv_sec;
+        tim->nanoseconds = ntime.tv_nsec;
+        saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
+        if(ret == TRUE) {
+            scsi->sentPackets++;
+            scsi->sentPacketsTotal++;
+        }
     }
     return ret;
 }
@@ -1990,6 +2172,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
     int i;
     Boolean res = TRUE, ret = TRUE;
     refreshSGIO();
+    int sendn = 0;
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
     for(i = 0; i < scsi->valid_end_array_capacity; i++) {
@@ -2000,20 +2183,23 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
                 DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
                 continue;
             }
+            ++sendn;
         }
     }
-    res = clock_gettime(CLOCK_REALTIME, &ntime);
-    if(res == -1) {
-        res = errno;
-        DBG("scsiSendEvent->clock_gettime: %s", STRERROR(res));
-        RAISE(GENER_ERROR);
-    }
-    tim->seconds = ntime.tv_sec;
-    tim->nanoseconds = ntime.tv_nsec;
-    saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
-    if(ret == TRUE) {
-        scsi->sentPackets++;
-	    scsi->sentPacketsTotal++;
+    if(sendn > 0) {
+        res = clock_gettime(CLOCK_REALTIME, &ntime);
+        if(res == -1) {
+            res = errno;
+            DBG("scsiSendEvent->clock_gettime: %s", STRERROR(res));
+            RAISE(GENER_ERROR);
+        }
+        tim->seconds = ntime.tv_sec;
+        tim->nanoseconds = ntime.tv_nsec;
+        saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
+        if(ret == TRUE) {
+            scsi->sentPackets++;
+            scsi->sentPacketsTotal++;
+        }
     }
     return ret;
 }
@@ -2026,6 +2212,7 @@ scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
     int i;
     Boolean res = TRUE, ret = TRUE;
     refreshSGIO();
+    int sendn = 0;
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
     for(i = 0; i < scsi->valid_end_array_capacity; i++) {
@@ -2036,12 +2223,15 @@ scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
                 DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
                 continue;
             }
+            ++sendn;
         }
     }
-    saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
-    if(ret == TRUE) {
-        scsi->sentPackets++;
-	    scsi->sentPacketsTotal++;
+    if(sendn > 0) {
+        saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
+        if(ret == TRUE) {
+            scsi->sentPackets++;
+            scsi->sentPacketsTotal++;
+        }
     }
     return ret;
 }

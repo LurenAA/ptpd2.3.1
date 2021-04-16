@@ -255,7 +255,7 @@ enum {
 #define MAX_FILENAME_LENGTH 256
 #define WWNS_LEN 8
 #define FC_HOST_LOCATION "/sys/class/fc_host"
-#define FC_NODE_NAME "/node_name"
+#define FC_NODE_NAME "/port_name"
 #define FC_STATE_NAME "/port_state"
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
 #define PORT_STATE_LEN 16
@@ -281,7 +281,8 @@ enum {
 #define INQ_CMD_LEN 16
 #define MX_SB_LEN 32
 #define INQ_REPLY_LEN 512
- 
+
+#define DEV_SESS_NUMBER 32
 #define SCSI_NAME_MAX 64
 #define SCST_THREAD 1
 #define INQ_BUF_SZ 128

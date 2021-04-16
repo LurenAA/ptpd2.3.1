@@ -214,10 +214,11 @@ typedef struct
     Boolean online;
 }SCSIInterfaceInfo;
 
-struct vdisk_tgt_dev {
+typedef struct vdisk_tgt_dev {
 	uint64_t sess_h;
     uint64_t wwn;
-};
+    char* str;
+} vdisk_tgt_dev;
 
 #include <sys/time.h>
 typedef struct a 
@@ -232,6 +233,7 @@ typedef struct a
 }SCSIREC;
 
 typedef struct SCSIEnd{
+    int dev_str_capacity; // not include '\0' str_len + 1
     uint64_t wwn;
     uint64_t sess_h;
     int fd;
@@ -250,6 +252,10 @@ typedef struct {
     SCSIEnd** invalid_end_array; 
     int invalid_end_array_length;
     int invalid_end_array_capacity;
+
+    vdisk_tgt_dev** sess_array;
+    int sess_array_capacity;
+    int sess_array_length;
     //别人的属性
     // uint64_t dictionary_keys[DICTIONARY_LEN]; //wwn
     // char* dictionary_values[DICTIONARY_LEN]; //dev

@@ -18,42 +18,6 @@ typedef struct Exception {
     const char* info;
 } Exception;
  
-extern const Exception GENER_ERROR;
-extern const Exception WWN_ERROR;
-extern const Exception ASSERT_ERROR;
-extern const Exception CLOSE_ERROR;
-extern const Exception CLOSEDIR_ERROR;
-extern const Exception PTHREAD_CANCEL_ERROR;
-extern const Exception PTHREAD_JOIN_ERROR;
-extern const Exception PTHREAD_MUTEX_DESTROY_ERROR;
-extern const Exception OPEN_ERROR;
-extern const Exception OPENDIR_ERROR;
-extern const Exception SCST_USER_REGISTER_DEVICE_ERROR;
-extern const Exception PTHREAD_MUTEX_ATTR_INIT_ERROR;
-extern const Exception STRTOUL_ERROR;
-extern const Exception READ_ERROR;
-extern const Exception PTHREAD_MUTEX_INIT_ERROR;
-extern const Exception PTHREAD_MUTEX_ATTR_DESTROY_ERROR;
-extern const Exception PTHREAD_CREATE_ERROR;
-extern const Exception PTHREAD_COND_INIT_ERROR;
-extern const Exception PTHREAD_COND_DESTROY_ERROR;
-extern const Exception POPEN_ERROR;
-extern const Exception SCSTADMIN_ERROR;
-extern const Exception PCLOSE_ERROR;
-extern const Exception MALLOC_ERROR;
-extern const Exception REALLOC_ERROR;
-extern const Exception CALLOC_ERROR;
-extern const Exception POLLHUP_ERROR;
-extern const Exception EINVAL_ERROR;
-extern const Exception PTHREAD_RWLOCK_INIT_ERROR;
-extern const Exception PTHREAD_RWLOCK_DESTROY_ERROR;
-extern const Exception PTHREAD_WRLOCK_ERROR;
-extern const Exception PTHREAD_RDLOCK_ERROR;
-extern const Exception PTHREAD_UNLOCK_ERROR;
-extern const Exception SIG_EMPTY_SET_ERROR;
-extern const Exception SIG_ADD_SET_ERROR;
-extern const Exception SIG_MASK_ERROR;
-extern const Exception PTHREAD_MUTEX_ERROR;
 typedef struct ExceptionStack_t
 {
     /* data */
@@ -122,5 +86,40 @@ enum {
 
 void exception_raise(const Exception* exp, int line, const char* file, volatile int* error_state_ptr);
 
-
+extern const Exception GENER_ERROR;
+extern const Exception WWN_ERROR;
+extern const Exception ASSERT_ERROR;
+extern const Exception CLOSE_ERROR;
+extern const Exception CLOSEDIR_ERROR;
+extern const Exception PTHREAD_CANCEL_ERROR;
+extern const Exception PTHREAD_JOIN_ERROR;
+extern const Exception PTHREAD_MUTEX_DESTROY_ERROR;
+extern const Exception OPEN_ERROR;
+extern const Exception OPENDIR_ERROR;
+extern const Exception SCST_USER_REGISTER_DEVICE_ERROR;
+extern const Exception PTHREAD_MUTEX_ATTR_INIT_ERROR;
+extern const Exception STRTOUL_ERROR;
+extern const Exception READ_ERROR;
+extern const Exception PTHREAD_MUTEX_INIT_ERROR;
+extern const Exception PTHREAD_MUTEX_ATTR_DESTROY_ERROR;
+extern const Exception PTHREAD_CREATE_ERROR;
+extern const Exception PTHREAD_COND_INIT_ERROR;
+extern const Exception PTHREAD_COND_DESTROY_ERROR;
+extern const Exception POPEN_ERROR;
+extern const Exception SCSTADMIN_ERROR;
+extern const Exception PCLOSE_ERROR;
+extern const Exception MALLOC_ERROR;
+extern const Exception REALLOC_ERROR;
+extern const Exception CALLOC_ERROR;
+extern const Exception POLLHUP_ERROR;
+extern const Exception EINVAL_ERROR;
+extern const Exception PTHREAD_RWLOCK_INIT_ERROR;
+extern const Exception PTHREAD_RWLOCK_DESTROY_ERROR;
+extern const Exception PTHREAD_WRLOCK_ERROR;
+extern const Exception PTHREAD_RDLOCK_ERROR;
+extern const Exception PTHREAD_UNLOCK_ERROR;
+extern const Exception SIG_EMPTY_SET_ERROR;
+extern const Exception SIG_ADD_SET_ERROR;
+extern const Exception SIG_MASK_ERROR;
+extern const Exception PTHREAD_MUTEX_ERROR;
 #endif
