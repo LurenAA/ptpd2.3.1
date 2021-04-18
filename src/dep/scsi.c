@@ -749,10 +749,6 @@ Boolean scsiShutdown(SCSIPath* scsi) {
     if(res)
         RAISE(PTHREAD_RWLOCK_DESTROY_ERROR);
     
-    if(scsi->scst_usr_fd)
-        if(close(scsi->scst_usr_fd) == -1)
-            RAISE(CLOSE_ERROR);
-    
     memset(scsi, 0, sizeof(* scsi));
     return TRUE;
 }
@@ -1413,7 +1409,7 @@ vdisk_tgt_dev* createNewTgtDev(SCSIPath* scsi) {
 
     for(int i = 0; i < scsi->sess_array_capacity; ++i) {
         if(!scsi->sess_array[i]) {
-            scsi->sess_array[i] = calloc(sizeof(*scsi->sess_array[i]), 1);
+            scsi->sess_array[i] = calloc(1, sizeof(*scsi->sess_array[i]));
             ++scsi->sess_array_length;
             return scsi->sess_array[i];
         }
@@ -1952,7 +1948,7 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
             RAISE(OPEN_ERROR);
     }
     
-    scsi->sess_array = malloc(sizeof(*scsi->sess_array) * DEV_SESS_NUMBER);
+    scsi->sess_array = calloc(1, sizeof(*scsi->sess_array) * DEV_SESS_NUMBER);
     if(!scsi->sess_array)
         RAISE(MALLOC_ERROR);
     scsi->sess_array_capacity = DEV_SESS_NUMBER;
@@ -2044,7 +2040,7 @@ ssize_t scsiRecvEvent(Octet * buf, TimeInternal * time, SCSIPath * scsi, int fla
     if(res) 
         RAISE(PTHREAD_MUTEX_ERROR);
     recvptr = scsi->recv_event_head;
-    while(recvptr != NULL && recvptr->isEvent != TRUE)
+    while(recvptr != NULL && recvptr->busy != TRUE)
         recvptr = recvptr->next;
     if(!recvptr) {
         DBG("recvptr == NULL");
@@ -2124,13 +2120,13 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
             ++sendn;
         }
     }
-    if(sendn > 0) {
+    // if(sendn > 0) {
         saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
         if(ret == TRUE) {
             scsi->sentPackets++;
             scsi->sentPacketsTotal++;
         }
-    }
+    // }
     return ret;
 }
 
@@ -2140,11 +2136,13 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
 {
     struct timespec ntime;
     int i;
-    Boolean res = TRUE, ret = TRUE;
+    Boolean ret = TRUE;
+    int res = 0;
     int sendn = 0;
     refreshSGIO();
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
+    res = clock_gettime(CLOCK_REALTIME, &ntime);
     for(i = 0; i < scsi->valid_end_array_capacity; i++) {
         if(scsi->valid_end_array[i]) {
             res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
@@ -2156,8 +2154,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
             ++sendn;
         }
     }
-    if(sendn > 0) {
-        res = clock_gettime(CLOCK_REALTIME, &ntime);
+    // if(sendn > 0) {
         if(res == -1) {
             res = errno;
             DBG("scsiSendEvent->clock_gettime: %s", STRERROR(res));
@@ -2170,7 +2167,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
             scsi->sentPackets++;
             scsi->sentPacketsTotal++;
         }
-    }
+    // }
     return ret;
 }
 
@@ -2185,6 +2182,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
     int sendn = 0;
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
+    res = clock_gettime(CLOCK_REALTIME, &ntime);
     for(i = 0; i < scsi->valid_end_array_capacity; i++) {
         if(scsi->valid_end_array[i]) {
             res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
@@ -2196,8 +2194,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
             ++sendn;
         }
     }
-    if(sendn > 0) {
-        res = clock_gettime(CLOCK_REALTIME, &ntime);
+    // if(sendn > 0) {
         if(res == -1) {
             res = errno;
             DBG("scsiSendEvent->clock_gettime: %s", STRERROR(res));
@@ -2210,7 +2207,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
             scsi->sentPackets++;
             scsi->sentPacketsTotal++;
         }
-    }
+    // }
     return ret;
 }
 
@@ -2236,12 +2233,12 @@ scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
             ++sendn;
         }
     }
-    if(sendn > 0) {
+    // if(sendn > 0) {
         saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
         if(ret == TRUE) {
             scsi->sentPackets++;
             scsi->sentPacketsTotal++;
         }
-    }
+    // }
     return ret;
 }

@@ -427,7 +427,7 @@ updateOffset(TimeInternal * send_time, TimeInternal * recv_time,
 
 	Boolean maxDelayHit = FALSE;
 
-	DBGV("UTCOffset: %d | leap 59: %d |  leap61: %d\n", 
+	DBG("UTCOffset: %d | leap 59: %d |  leap61: %d\n", 
 	     ptpClock->timePropertiesDS.currentUtcOffset,ptpClock->timePropertiesDS.leap59,ptpClock->timePropertiesDS.leap61);
 
 	/* prepare time constant for servo*/
@@ -776,6 +776,10 @@ void checkOffset(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	if (ptpClock->offsetFromMaster.seconds) {
 
 		if(!rtOpts->enablePanicMode) {
+			INFO("Offset %d.%09d greater than "
+			 "administratively set maximum %d\n. Will not update clock",
+				ptpClock->offsetFromMaster.seconds, 
+				ptpClock->offsetFromMaster.nanoseconds, rtOpts->maxOffset);
 			if (!rtOpts->noResetClock)
 				CRITICAL("Offset above 1 second. Clock will step.\n");
 			ptpClock->clockControl.stepRequired = TRUE;
