@@ -52,8 +52,9 @@ void exception_raise(const Exception* exp, int line, const char* file, volatile 
                "exp:  %s \n"
                "line:  %d \n"
                "file:  %s \n"
-               "errno: %s \n"
-               , exp->info, line, file, strerror(errno));
+               "errno: %d\n"
+               "errno_str: %s \n"
+               , exp->info, line, file,errno,  strerror(errno));
         abort();
     }
 

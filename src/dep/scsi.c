@@ -177,7 +177,10 @@ static thread_local unsigned char dxferp[INQ_REPLY_LEN];
 #define PLWRITE(res) (res & POLLOUT)
 #define PLHUP(res) (res & POLLHUP)
 #define PLERROR(res) (res & POLLERR)
-
+#define SHELLSCRIPT "\
+#/bin/bash \n\
+for m in scst qla2xxx_scst qla2x00tgt scst_vdisk scst_user scst_disk ; do modprobe $m; done\
+"
 
 
 //enum
@@ -1410,7 +1413,7 @@ vdisk_tgt_dev* createNewTgtDev(SCSIPath* scsi) {
 
     for(int i = 0; i < scsi->sess_array_capacity; ++i) {
         if(!scsi->sess_array[i]) {
-            scsi->sess_array[i] = malloc(sizeof(*scsi->sess_array[i]));
+            scsi->sess_array[i] = calloc(sizeof(*scsi->sess_array[i]), 1);
             ++scsi->sess_array_length;
             return scsi->sess_array[i];
         }
@@ -1939,8 +1942,15 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
         return FALSE; 
 
     scsi->scst_usr_fd = open(SCST_USER_DEV, O_RDWR | O_NONBLOCK);
-    if(scsi->scst_usr_fd == -1) 
-        RAISE(OPEN_ERROR);
+    if(scsi->scst_usr_fd == -1) {
+        if(errno == ENOENT) {
+            system(SHELLSCRIPT);
+            scsi->scst_usr_fd = open(SCST_USER_DEV, O_RDWR | O_NONBLOCK);
+            if(scsi->scst_usr_fd == -1) 
+                RAISE(OPEN_ERROR);
+        } else 
+            RAISE(OPEN_ERROR);
+    }
     
     scsi->sess_array = malloc(sizeof(*scsi->sess_array) * DEV_SESS_NUMBER);
     if(!scsi->sess_array)
