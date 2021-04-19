@@ -271,7 +271,7 @@ enum {
 #define STR_ERROR_STR_BUF_LENGTH 64
 #define END_FRESH_BUF_SIZE 1024
 #define SCST_ADMIN_ERROR_INFO "FATAL"
-#define END_FRESH_TIME_INTERVAL 10 * 1000000
+#define END_FRESH_TIME_INTERVAL 40 * 1000000
 #define LOAD_ "- - -"
 #define INDEXN (sizeof("/sys/class/scsi_host/hostn") - 2)
 #define DEFAULT_SCSI_END_SIZE 16

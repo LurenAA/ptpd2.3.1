@@ -1490,7 +1490,8 @@ saveMessageInReceiveList(SCSIPath* scsi, char* pbuf, int length, Boolean isEvent
     memcpy(recv->buf, pbuf, length);
         
     res = pthread_mutex_unlock(&scsi->recv_mutex);
-    if(res) RAISE(PTHREAD_MUTEX_ERROR);
+    if(res) 
+        RAISE(PTHREAD_MUTEX_ERROR);
 }
 
 /**
@@ -1511,7 +1512,7 @@ static void exec_write(struct vdisk_cmd *vcmd, vdisk_tgt_dev* dsk_ptr) {
             return ;    
         }
 
-        if(isEvent && vcmd->ntime.tv_sec == 0) {
+        if(isEvent && vcmd->ntime.tv_sec == 0 && vcmd->ntime.tv_sec == 0) {
             res = clock_gettime(CLOCK_REALTIME, &vcmd->ntime);
             if(res == -1) {
                 res = errno;
@@ -1624,9 +1625,10 @@ do_exec(struct vdisk_cmd *vcmd) {
             break;
     }
     if(j >= ARRAY_SIZE(scsi_opcode)) {
-        printf("log: opcode out of range \n");
+        DBG(">>>>>>>>>>>>log: opcode out of range \n");
+        abort();
     } else {
-        printf("@@@@@@@log: opcode = %s\n", scsi_opcode_string[j]);
+        DBG("@@@@@@@log: opcode = %s\n", scsi_opcode_string[j]);
     }
     // funlockfile(stdout);
 #endif    
@@ -1730,12 +1732,6 @@ void* main_loop(void* arg) {
     
     while(1) {
         res = ioctl(scsi->scst_usr_fd, SCST_USER_REPLY_AND_GET_MULTI, &multi.multi_cmd);
-        res2 = clock_gettime(CLOCK_REALTIME, &vcmd.ntime);
-        if(res2 == -1) {
-            res2 = errno;
-            DBG("error clock_gettime: %s\n", STRERROR(res2));
-            vcmd.ntime.tv_sec = 0;
-        }
         if(res == -1) {
             res = errno;
             switch(res) {
@@ -1789,6 +1785,14 @@ again_poll:
 		}        
         multi.multi_cmd.preplies = (uintptr_t)&multi.replies[0];
         for (i = 0, j = 0; i < multi.multi_cmd.cmds_cnt; i++, j++) {
+            res2 = clock_gettime(CLOCK_REALTIME, &vcmd.ntime);
+            if(res2 == -1) {
+                res2 = errno;
+                DBG("error clock_gettime: %s\n", STRERROR(res2));
+                // abort();
+                vcmd.ntime.tv_sec = 0;
+                vcmd.ntime.tv_nsec = 0;
+            }
             vcmd.cmd = &multi.cmds[i];
 			vcmd.reply = &multi.replies[j];
             ret = process_cmd(&vcmd);
@@ -2134,7 +2138,7 @@ ssize_t
 scsiSendEvent(Octet * buf, UInteger16 length, SCSIPath * scsi, 
 const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
 {
-    struct timespec ntime;
+    struct timespec ntime , ntime_;
     int i;
     Boolean ret = TRUE;
     int res = 0;
@@ -2143,6 +2147,11 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
     res = clock_gettime(CLOCK_REALTIME, &ntime);
+    if(res == -1) {
+        res = errno;
+        DBG("%s\n", STRERROR(res));
+        RAISE(GENER_ERROR);
+    }
     for(i = 0; i < scsi->valid_end_array_capacity; i++) {
         if(scsi->valid_end_array[i]) {
             res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
@@ -2154,6 +2163,12 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
             ++sendn;
         }
     }
+    // res = clock_gettime(CLOCK_REALTIME, &ntime_);
+    // if(sendn > 0) {
+    //     printf("%ld,%ld\n", ntime.tv_sec, ntime.tv_nsec);
+    //     printf("%ld,%ld\n", ntime_.tv_sec, ntime_.tv_nsec);
+    //     abort();
+    // }
     // if(sendn > 0) {
         if(res == -1) {
             res = errno;
@@ -2162,7 +2177,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
         }
         tim->seconds = ntime.tv_sec;
         tim->nanoseconds = ntime.tv_nsec;
-        saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
+        saveMessageInReceiveList(scsi,buf,length,TRUE,scsi->info.wwn, ntime);
         if(ret == TRUE) {
             scsi->sentPackets++;
             scsi->sentPacketsTotal++;
@@ -2202,7 +2217,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
         }
         tim->seconds = ntime.tv_sec;
         tim->nanoseconds = ntime.tv_nsec;
-        saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
+        saveMessageInReceiveList(scsi,buf,length,TRUE,scsi->info.wwn, ntime);
         if(ret == TRUE) {
             scsi->sentPackets++;
             scsi->sentPacketsTotal++;

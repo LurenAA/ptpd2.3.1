@@ -427,7 +427,7 @@ updateOffset(TimeInternal * send_time, TimeInternal * recv_time,
 
 	Boolean maxDelayHit = FALSE;
 
-	DBG("UTCOffset: %d | leap 59: %d |  leap61: %d\n", 
+	DBGV("UTCOffset: %d | leap 59: %d |  leap61: %d\n", 
 	     ptpClock->timePropertiesDS.currentUtcOffset,ptpClock->timePropertiesDS.leap59,ptpClock->timePropertiesDS.leap61);
 
 	/* prepare time constant for servo*/
