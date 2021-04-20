@@ -659,6 +659,7 @@ typedef struct {
 } UnicastGrantData;
 
 struct UnicastGrantTable {
+	uint64_t SCSItransportAddress; /* scsi address of slave(or master)*/
 	Integer32		transportAddress;	/* IP address of slave (or master) */
 	UInteger8		domainNumber;		/* domain of the master - as used by Telecom Profile */
 	UInteger8		localPreference;		/* local preference - as used by Telecom profile */

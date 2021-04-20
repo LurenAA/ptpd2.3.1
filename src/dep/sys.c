@@ -337,6 +337,7 @@ int writeMessage(FILE* destination, int priority, const char * format, va_list a
 		(priority > LOG_WARNING)){
 		    return 1;
 		}
+	flockfile(destination);
 	/* Print timestamps and prefixes only if we're running in foreground or logging to file*/
 	if( rtOpts.nonDaemon || destination != stderr) {
 
@@ -367,6 +368,7 @@ int writeMessage(FILE* destination, int priority, const char * format, va_list a
 		       translatePortState(G_ptpClock) : "___");
 	}
 	written = vfprintf(destination, format, ap);
+	funlockfile(destination);
 	return written;
 
 }

@@ -43,8 +43,7 @@
 #define GRANT_KEEPALIVE_INTERVAL 5
 /* maximum number of missed messages of given type before we re-request */
 #define GRANT_MAX_MISSED 10
-void issueSignalingSCSI(MsgSignaling *outgoing, uint64_t destination,  const RunTimeOpts *rtOpts,
-		PtpClock *ptpClock);
+void issueSignalingSCSI(MsgSignaling *outgoing, uint64_t destination,  const RunTimeOpts *rtOpts, PtpClock *ptpClock);
 static void updateUnicastIndex(UnicastGrantTable *table, UnicastGrantTable **index);
 static UnicastGrantTable* lookupUnicastIndex(const PortIdentity *portIdentity, Integer32 transportAddress, UnicastGrantTable **index);
 Boolean 
@@ -876,8 +875,13 @@ void cancelUnicastTransmission(UnicastGrantData* grant,  const RunTimeOpts* rtOp
 			if(grant->parent->domainNumber != 0) {
 			    ptpClock->outgoingSignalingTmp.header.domainNumber = grant->parent->domainNumber;
 			}
-			issueSignaling(&ptpClock->outgoingSignalingTmp, grant->parent->transportAddress, rtOpts, ptpClock);
-			ptpClock->counters.unicastGrantsCancelSent++;
+			if(rtOpts->transport != SCSI_FC) {
+				issueSignaling(&ptpClock->outgoingSignalingTmp, grant->parent->transportAddress, rtOpts, ptpClock);
+				ptpClock->counters.unicastGrantsCancelSent++;
+			} else{
+				issueSignalingSCSI(&ptpClock->outgoingSignalingTmp,grant->parent->SCSItransportAddress, rtOpts, ptpClock);
+				ptpClock->counters.unicastGrantsCancelSent++;
+			} 
 	} 
 
 	/* cleanup msgTmp signalingTLV */
