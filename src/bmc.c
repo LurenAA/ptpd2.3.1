@@ -629,13 +629,15 @@ bmcStateDecision(MsgHeader *header, MsgAnnounce *announce, UInteger8 localPrefer
 		}
 		s1(header,announce,ptpClock, rtOpts);
 		if(rtOpts->unicastNegotiation) {
-			ptpClock->parentGrants = findUnicastGrants(&ptpClock->parentPortIdentity, 0,
+			ptpClock->parentGrants = findUnicastGrants(&ptpClock->parentPortIdentity,
 						ptpClock->unicastGrants, ptpClock->unicastGrantIndex, ptpClock->unicastDestinationCount ,
-					    FALSE);
+					    FALSE, rtOpts->transport, 0);
 		}
 		if (newBM) {
-
-			ptpClock->masterAddr = ptpClock->netPath.lastSourceAddr;
+			if(rtOpts->transport != SCSI_FC)
+				ptpClock->masterAddr = ptpClock->netPath.lastSourceAddr;
+			else 
+				ptpClock->masterAddrSCSI = ptpClock->SCSIPath.lastSourceAddr;
 
 			displayPortIdentity(&header->sourcePortIdentity,
 					    "New best master selected:");

@@ -43,12 +43,10 @@
 #define GRANT_KEEPALIVE_INTERVAL 5
 /* maximum number of missed messages of given type before we re-request */
 #define GRANT_MAX_MISSED 10
-void issueSignalingSCSI(MsgSignaling *outgoing, uint64_t destination,  const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+// void issueSignalingSCSI(MsgSignaling *outgoing, uint64_t destination,  const RunTimeOpts *rtOpts, PtpClock *ptpClock);
 static void updateUnicastIndex(UnicastGrantTable *table, UnicastGrantTable **index);
-static UnicastGrantTable* lookupUnicastIndex(const PortIdentity *portIdentity, Integer32 transportAddress, UnicastGrantTable **index);
-Boolean 
-scsiSendGeneral(Octet * buf, UInteger16 length, SCSIPath * scsi, 
-const RunTimeOpts *rtOpts, uint64_t destinationAddress);
+static UnicastGrantTable* lookupUnicastIndex(const PortIdentity *portIdentity, UnicastGrantTable **index);
+Boolean scsiSendGeneral(Octet * buf, UInteger16 length, SCSIPath * scsi,  const RunTimeOpts *rtOpts, uint64_t destinationAddress);
 /* update index table */
 static void
 updateUnicastIndex(UnicastGrantTable *table, UnicastGrantTable **index)
@@ -64,7 +62,7 @@ updateUnicastIndex(UnicastGrantTable *table, UnicastGrantTable **index)
 
 /* return matching entry from index table */
 static UnicastGrantTable*
-lookupUnicastIndex(const PortIdentity *portIdentity, Integer32 transportAddress, UnicastGrantTable **index)
+lookupUnicastIndex(const PortIdentity *portIdentity, UnicastGrantTable **index)
 {
     uint32_t hash = fnvHash((void*)portIdentity, sizeof(PortIdentity), UNICAST_MAX_DESTINATIONS);
 
@@ -96,7 +94,7 @@ lookupUnicastIndex(const PortIdentity *portIdentity, Integer32 transportAddress,
 */
 UnicastGrantTable*
 findUnicastGrants
-(const PortIdentity* portIdentity, Integer32 transportAddress, UnicastGrantTable *grantTable, UnicastGrantTable **index, int nodeCount, Boolean update)
+(const PortIdentity* portIdentity, UnicastGrantTable *grantTable, UnicastGrantTable **index, int nodeCount, Boolean update, int type, uint64_t transportAddress)
 {
 
 	int i;
@@ -108,7 +106,7 @@ findUnicastGrants
 
 	/* look up the index table*/
 	if(index != NULL) {
-	    found = lookupUnicastIndex(portIdentity, transportAddress, index);
+	    found = lookupUnicastIndex(portIdentity, index);
 	}
 	
 	if(found != NULL) {
@@ -117,7 +115,10 @@ findUnicastGrants
 		 * (used by slave to preserve configured master addresses)
 		 */
 		if(update && transportAddress) {
-		    found->transportAddress = transportAddress;
+			if(type != SCSI_FC)
+		    	found->transportAddress = (Integer32)transportAddress;
+			else 
+				found->transportAddressSCSI = transportAddress;
 		}
 		if(update) {
 		    found->portIdentity = *portIdentity;
@@ -149,7 +150,10 @@ findUnicastGrants
 		 */
 
 		if(update && transportAddress) {
-		    found->transportAddress = transportAddress;
+		    if(type != SCSI_FC)
+		    	found->transportAddress = (Integer32)transportAddress;
+			else 
+				found->transportAddressSCSI = transportAddress;
 		}
 
 		if(update) {
@@ -167,16 +171,17 @@ findUnicastGrants
 	    }
 
 	    /* no port identity match but we have a transport address match */
-	    if(nodeTable->transportAddress && 
-		(nodeTable->transportAddress==transportAddress)) {
+	    if((type != SCSI_FC && nodeTable->transportAddress && 
+		(nodeTable->transportAddress==(Integer32)transportAddress))||
+		(type == SCSI_FC && nodeTable->transportAddressSCSI && 
+		(nodeTable->transportAddressSCSI==transportAddress))) {
 
 		found = nodeTable;
 		if(update) {
 			found->portIdentity = *portIdentity;
 		}
 		break;
-	    }
-
+	    } 
 	}
 
     if(found != NULL) {
@@ -185,13 +190,15 @@ findUnicastGrants
 
     /* will return NULL if there are no free slots, otherwise the first free slot */
     if(update && firstFree != NULL) {
-	firstFree->portIdentity = *portIdentity;
-	firstFree->transportAddress = transportAddress;
-
+		firstFree->portIdentity = *portIdentity;
+		if(type != SCSI_FC)
+			firstFree->transportAddress = (Integer32)transportAddress;
+		else 
+			firstFree->transportAddressSCSI = transportAddress;
 	/* new set of grants - reset sequence numbers */
-	for(i=0; i < PTP_MAX_MESSAGE; i++) {
-	    firstFree->grantData[i].sentSeqId = 0;
-	}
+		for(i=0; i < PTP_MAX_MESSAGE; i++) {
+			firstFree->grantData[i].sentSeqId = 0;
+		}
 
 	/* - You know, we could as well have sex now.
          * - Yes, dear, but, let's not.
@@ -236,7 +243,7 @@ void initOutgoingMsgSignaling(PortIdentity* targetPortIdentity, MsgSignaling* ou
 
 
 /**\brief Handle incoming REQUEST_UNICAST_TRANSMISSION signaling TLV type*/
-void handleSMRequestUnicastTransmission(MsgSignaling* incoming, MsgSignaling* outgoing, Integer32 sourceAddress, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
+void handleSMRequestUnicastTransmission(MsgSignaling* incoming, MsgSignaling* outgoing, uint64_t sourceAddress, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 {
 
 	char portId[PATH_MAX];
@@ -265,7 +272,7 @@ void handleSMRequestUnicastTransmission(MsgSignaling* incoming, MsgSignaling* ou
 			getMessageTypeName(messageType), portId, inet_ntoa(tmpAddr), requestData->durationField,
 			requestData->logInterMessagePeriod);
 
-	nodeTable = findUnicastGrants(&incoming->header.sourcePortIdentity, sourceAddress, ptpClock->unicastGrants, ptpClock->unicastGrantIndex, UNICAST_MAX_DESTINATIONS, TRUE);
+	nodeTable = findUnicastGrants(&incoming->header.sourcePortIdentity, ptpClock->unicastGrants, ptpClock->unicastGrantIndex, UNICAST_MAX_DESTINATIONS, TRUE, rtOpts->transport, sourceAddress);
 
 	if(nodeTable == NULL) {
 		if(ptpClock->slaveCount >= UNICAST_MAX_DESTINATIONS) {
@@ -374,7 +381,7 @@ finaliseResponse:
 }
 
 /**\brief Handle incoming GRANT_UNICAST_TRANSMISSION signaling message type*/
-void handleSMGrantUnicastTransmission(MsgSignaling* incoming, Integer32 sourceAddress, UnicastGrantTable *grantTable, int nodeCount, PtpClock *ptpClock)
+void handleSMGrantUnicastTransmission(MsgSignaling* incoming, uint64_t sourceAddress, UnicastGrantTable *grantTable, int nodeCount, PtpClock *ptpClock, const RunTimeOpts *rtOpts)
 {
 
 	char portId[PATH_MAX];
@@ -392,7 +399,7 @@ void handleSMGrantUnicastTransmission(MsgSignaling* incoming, Integer32 sourceAd
 	DBGV("Received GRANT_UNICAST_TRANSMISSION message for message %s from %s(%s)\n",
 			getMessageTypeName(messageType), portId, inet_ntoa(tmpAddr));
 
-	nodeTable = findUnicastGrants(&incoming->header.sourcePortIdentity, sourceAddress, grantTable, ptpClock->unicastGrantIndex, nodeCount, TRUE);
+	nodeTable = findUnicastGrants(&incoming->header.sourcePortIdentity, grantTable, ptpClock->unicastGrantIndex, nodeCount, TRUE, rtOpts->transport, sourceAddress);
 
 	if(nodeTable == NULL) {
 		DBG("GRANT_UNICAST_TRANSMISSION: did not find node in master table: %s\n", portId);
@@ -451,7 +458,7 @@ void handleSMGrantUnicastTransmission(MsgSignaling* incoming, Integer32 sourceAd
 }
 
 /**\brief Handle incoming CANCEL_UNICAST_TRANSMISSION signaling message type*/
-Boolean handleSMCancelUnicastTransmission(MsgSignaling* incoming, MsgSignaling* outgoing, Integer32 sourceAddress, PtpClock* ptpClock)
+Boolean handleSMCancelUnicastTransmission(MsgSignaling* incoming, MsgSignaling* outgoing, uint64_t sourceAddress, PtpClock* ptpClock, const RunTimeOpts *rtOpts)
 {
 	DBGV("Received CANCEL_UNICAST_TRANSMISSION message\n");
 
@@ -481,7 +488,7 @@ Boolean handleSMCancelUnicastTransmission(MsgSignaling* incoming, MsgSignaling* 
 
 	ptpClock->counters.unicastGrantsCancelReceived++;
 
-	nodeTable = findUnicastGrants(&incoming->header.sourcePortIdentity, sourceAddress, ptpClock->unicastGrants, ptpClock->unicastGrantIndex, UNICAST_MAX_DESTINATIONS, FALSE);
+	nodeTable = findUnicastGrants(&incoming->header.sourcePortIdentity, ptpClock->unicastGrants, ptpClock->unicastGrantIndex, UNICAST_MAX_DESTINATIONS, FALSE, rtOpts->transport, sourceAddress);
 
 	if(nodeTable == NULL) {
 		DBG("CANCEL_UNICAST_TRANSMISSION: did not find node in slave table: %s\n", portId);
@@ -530,7 +537,7 @@ Boolean handleSMCancelUnicastTransmission(MsgSignaling* incoming, MsgSignaling* 
 }
 
 /**\brief Handle incoming ACKNOWLEDGE_CANCEL_UNICAST_TRANSMISSION signaling message type*/
-void handleSMAcknowledgeCancelUnicastTransmission(MsgSignaling* incoming, Integer32 sourceAddress, PtpClock* ptpClock)
+void handleSMAcknowledgeCancelUnicastTransmission(MsgSignaling* incoming, uint64_t sourceAddress, PtpClock* ptpClock,const RunTimeOpts *rtOpts)
 {
 
 	char portId[PATH_MAX];
@@ -550,7 +557,7 @@ void handleSMAcknowledgeCancelUnicastTransmission(MsgSignaling* incoming, Intege
 	DBGV("Received ACKNOWLEDGE_CANCEL_UNICAST_TRANSMISSION message for message %s from %s(%s)\n",
 			getMessageTypeName(messageType), portId, inet_ntoa(tmpAddr));
 
-	nodeTable = findUnicastGrants(&incoming->header.sourcePortIdentity, sourceAddress, ptpClock->unicastGrants, ptpClock->unicastGrantIndex, UNICAST_MAX_DESTINATIONS, FALSE);
+	nodeTable = findUnicastGrants(&incoming->header.sourcePortIdentity, ptpClock->unicastGrants, ptpClock->unicastGrantIndex, UNICAST_MAX_DESTINATIONS, FALSE, rtOpts->transport, sourceAddress);
 
 	if(nodeTable == NULL) {
 		DBG("ACKNOWLEDGE_CANCEL_UNICAST_TRANSMISSION: did not find node in slave table: %s\n", portId);
@@ -683,6 +690,7 @@ initUnicastGrantTable(UnicastGrantTable *grantTable, Enumeration8 delayMechanism
     for(i=0; i < UNICAST_MAX_DESTINATIONS; i++) {
 	ptpClock->unicastGrantIndex[i] = NULL;
 	ptpClock->syncDestIndex[i].transportAddress = 0;
+	ptpClock->syncDestIndex[i].transportAddressSCSI = 0;
     }
 
     for(j=0; j<nodeCount; j++) {    
@@ -691,8 +699,11 @@ initUnicastGrantTable(UnicastGrantTable *grantTable, Enumeration8 delayMechanism
 	
 	memset(nodeTable, 0, sizeof(UnicastGrantTable));
 
-	if(destinations != NULL && (destinations[j].transportAddress != 0)) {
-	    nodeTable->transportAddress = destinations[j].transportAddress;
+	if(destinations != NULL && ((destinations[j].transportAddress != 0) || (destinations[j].transportAddressSCSI != 0))) {
+	    if(rtOpts->transport != SCSI_FC)
+			nodeTable->transportAddress = destinations[j].transportAddress;
+		else 
+			nodeTable->transportAddressSCSI = destinations[j].transportAddressSCSI;
 	    nodeTable->domainNumber = destinations[j].domainNumber;
 	    nodeTable->localPreference = destinations[j].localPreference;
 	    if(nodeTable->domainNumber == 0) {
@@ -851,7 +862,8 @@ void requestUnicastTransmission(UnicastGrantData *grant, UInteger32 duration, co
 			if(grant->parent->domainNumber != 0) {
 			    ptpClock->outgoingSignalingTmp.header.domainNumber = grant->parent->domainNumber;
 			}
-			issueSignaling(&ptpClock->outgoingSignalingTmp, grant->parent->transportAddress, rtOpts, ptpClock);
+			issueSignaling(&ptpClock->outgoingSignalingTmp, 
+			rtOpts->transport != SCSI_FC?grant->parent->transportAddress:grant->parent->transportAddressSCSI, rtOpts, ptpClock);
 			ptpClock->counters.unicastGrantsRequested++;
 			/* ready to be monitored */
 			grant->requested = TRUE;
@@ -875,13 +887,14 @@ void cancelUnicastTransmission(UnicastGrantData* grant,  const RunTimeOpts* rtOp
 			if(grant->parent->domainNumber != 0) {
 			    ptpClock->outgoingSignalingTmp.header.domainNumber = grant->parent->domainNumber;
 			}
-			if(rtOpts->transport != SCSI_FC) {
-				issueSignaling(&ptpClock->outgoingSignalingTmp, grant->parent->transportAddress, rtOpts, ptpClock);
+			// if(rtOpts->transport != SCSI_FC) {
+			issueSignaling(&ptpClock->outgoingSignalingTmp, 
+			rtOpts->transport != SCSI_FC?grant->parent->transportAddress:grant->parent->transportAddressSCSI, rtOpts, ptpClock);
 				ptpClock->counters.unicastGrantsCancelSent++;
-			} else{
-				issueSignalingSCSI(&ptpClock->outgoingSignalingTmp,grant->parent->SCSItransportAddress, rtOpts, ptpClock);
-				ptpClock->counters.unicastGrantsCancelSent++;
-			} 
+			// } else{
+				// issueSignalingSCSI(&ptpClock->outgoingSignalingTmp,grant->parent->transportAddressSCSI, rtOpts, ptpClock);
+				// ptpClock->counters.unicastGrantsCancelSent++;
+			// } 
 	} 
 
 	/* cleanup msgTmp signalingTLV */
@@ -890,10 +903,10 @@ void cancelUnicastTransmission(UnicastGrantData* grant,  const RunTimeOpts* rtOp
 	freeSignalingTLV(&ptpClock->outgoingSignalingTmp);
 }
 
-void issueSignaling(MsgSignaling *outgoing, Integer32 destination,  const RunTimeOpts *rtOpts,
+void issueSignaling(MsgSignaling *outgoing, uint64_t destination,  const RunTimeOpts *rtOpts,
 		PtpClock *ptpClock)
 {
-
+	Boolean res;
 	/* pack SignalingTLV */
 	msgPackSignalingTLV( ptpClock->msgObuf, outgoing, ptpClock);
 
@@ -904,8 +917,14 @@ void issueSignaling(MsgSignaling *outgoing, Integer32 destination,  const RunTim
 
 	msgPackSignaling( ptpClock->msgObuf, outgoing, ptpClock);
 
-	if(!netSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
-			   &ptpClock->netPath, rtOpts, destination)) {
+	if(rtOpts->transport != SCSI_FC)
+		res = netSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
+			   &ptpClock->netPath, rtOpts, destination);
+	else 
+		res = scsiSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
+			   &ptpClock->SCSIPath, rtOpts, destination);
+	
+	if(!res) {
 		DBGV("Signaling message  can't be sent -> FAULTY state \n");
 		ptpClock->counters.messageSendErrors++;
 		toState(PTP_FAULTY, rtOpts, ptpClock);
@@ -915,30 +934,30 @@ void issueSignaling(MsgSignaling *outgoing, Integer32 destination,  const RunTim
 	}
 }
 
-void issueSignalingSCSI(MsgSignaling *outgoing, uint64_t destination,  const RunTimeOpts *rtOpts,
-		PtpClock *ptpClock)
-{
+// void issueSignalingSCSI(MsgSignaling *outgoing, uint64_t destination,  const RunTimeOpts *rtOpts,
+// 		PtpClock *ptpClock)
+// {
 
-	/* pack SignalingTLV */
-	msgPackSignalingTLV( ptpClock->msgObuf, outgoing, ptpClock);
+// 	/* pack SignalingTLV */
+// 	msgPackSignalingTLV( ptpClock->msgObuf, outgoing, ptpClock);
 
-	/* set header messageLength, the outgoing->tlv->lengthField is now valid */
-	outgoing->header.messageLength = SIGNALING_LENGTH +
-					TL_LENGTH +
-					outgoing->tlv->lengthField;
+// 	/* set header messageLength, the outgoing->tlv->lengthField is now valid */
+// 	outgoing->header.messageLength = SIGNALING_LENGTH +
+// 					TL_LENGTH +
+// 					outgoing->tlv->lengthField;
 
-	msgPackSignaling( ptpClock->msgObuf, outgoing, ptpClock);
+// 	msgPackSignaling( ptpClock->msgObuf, outgoing, ptpClock);
 
-	if(!scsiSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
-			   &ptpClock->SCSIPath, rtOpts, destination)) {
-		DBGV("Signaling message  can't be sent -> FAULTY state \n");
-		ptpClock->counters.messageSendErrors++;
-		toState(PTP_FAULTY, rtOpts, ptpClock);
-	} else {
-		DBG("Signaling msg sent \n");
-		ptpClock->counters.signalingMessagesSent++;
-	}
-}
+// 	if(!scsiSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
+// 			   &ptpClock->SCSIPath, rtOpts, destination)) {
+// 		DBGV("Signaling message  can't be sent -> FAULTY state \n");
+// 		ptpClock->counters.messageSendErrors++;
+// 		toState(PTP_FAULTY, rtOpts, ptpClock);
+// 	} else {
+// 		DBG("Signaling msg sent \n");
+// 		ptpClock->counters.signalingMessagesSent++;
+// 	}
+// }
 
 /* cancel all given or requested grants for a given clock node */
 void
@@ -977,8 +996,159 @@ cancelAllGrants(UnicastGrantTable *grantTable, int nodeCount, const RunTimeOpts 
 
 }
 
+// void
+// handleSignalingSCSI(MsgHeader *header,
+// 		 Boolean isFromSelf, uint64_t sourceAddress, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
+// {
+// 	DBGV("Signaling message received : \n");
+
+
+// 	if (isFromSelf) {
+// 		DBGV("handleSignaling: Ignore message from self \n");
+// 		return;
+// 	}
+
+// 	int tlvOffset = 0;
+// 	int tlvFound = 0;
+
+// 	while(msgUnpackSignaling(ptpClock->msgIbuf,&ptpClock->msgTmp.signaling, header, ptpClock, tlvOffset)) {
+
+// 	if(ptpClock->msgTmp.signaling.tlv == NULL) {
+
+// 	    	if(tlvFound==0) {
+// 		    DBGV("handleSignaling: No TLVs in message\n");
+// 		    ptpClock->counters.messageFormatErrors++;
+// 		} else {
+// 		    DBGV("handleSignaling: No more TLVs\n");
+// 		}
+// 		return;
+// 	}
+
+// 	tlvFound++;
+
+// 	/* accept the message if directed either to us or to all-ones */
+//         if(!acceptPortIdentity(ptpClock->portIdentity, ptpClock->msgTmp.signaling.targetPortIdentity))
+//         {
+//                 DBGV("handleSignaling: The signaling message was not accepted");
+// 		ptpClock->counters.discardedMessages++;
+//                 goto end;
+//         }
+
+// 	/* Can we handle this? */
+
+// 	switch(ptpClock->msgTmp.signaling.tlv->tlvType)
+// 	{
+// 	case TLV_REQUEST_UNICAST_TRANSMISSION:
+// 		DBGV("handleSignaling: Request Unicast Transmission\n");
+// 		if(!rtOpts->unicastNegotiation || rtOpts->ipMode!=IPMODE_UNICAST) {
+// 			DBGV("handleSignaling: Ignoring unicast negotiation message - not running unicast or negotiation not enabled\n");
+// 			ptpClock->counters.discardedMessages++;
+// 			goto end;
+// 		}
+// 		if( (ptpClock->portState==PTP_LISTENING && !rtOpts->unicastNegotiationListening) || 
+// 		    ptpClock->portState==PTP_DISABLED || ptpClock->portState == PTP_INITIALIZING ||
+// 		    ptpClock->portState==PTP_FAULTY) {
+// 	        	    DBG("Will not grant unicast transmission requests in %s state\n",
+//                 			portState_getName(ptpClock->portState));
+// 			    ptpClock->counters.discardedMessages++;
+//         		    goto end;
+// 		}
+// 		unpackSMRequestUnicastTransmission(ptpClock->msgIbuf + tlvOffset, &ptpClock->msgTmp.signaling, ptpClock);
+// 		handleSMRequestUnicastTransmission(&ptpClock->msgTmp.signaling, &ptpClock->outgoingSignalingTmp, sourceAddress, rtOpts, ptpClock);
+// 		/* send back the outgoing signaling message */
+// 		if(ptpClock->outgoingSignalingTmp.tlv->tlvType == TLV_GRANT_UNICAST_TRANSMISSION) {
+// 			issueSignalingSCSI(&ptpClock->outgoingSignalingTmp, sourceAddress,rtOpts, ptpClock);
+// 		} 
+// 		break;
+// 	case TLV_CANCEL_UNICAST_TRANSMISSION:
+// 		DBGV("handleSignaling: Cancel Unicast Transmission\n");
+// 		if(!rtOpts->unicastNegotiation || rtOpts->ipMode!=IPMODE_UNICAST) {
+// 			DBGV("handleSignaling: Ignoring unicast negotiation message - not running unicast or negotiation not enabled\n");
+// 			ptpClock->counters.discardedMessages++;
+// 			goto end;
+// 		}
+// 		if( (ptpClock->portState==PTP_LISTENING && !rtOpts->unicastNegotiationListening) || 
+// 		    ptpClock->portState==PTP_DISABLED || ptpClock->portState == PTP_INITIALIZING ||
+// 		    ptpClock->portState==PTP_FAULTY) {
+// 	        	    DBG("Will not cancel unicast transmission requests in %s state\n",
+//                 			portState_getName(ptpClock->portState));
+// 			    ptpClock->counters.discardedMessages++;
+//         		    goto end;
+// 		}
+// 		unpackSMCancelUnicastTransmission(ptpClock->msgIbuf + tlvOffset, &ptpClock->msgTmp.signaling, ptpClock);
+// 		/* send back the cancel acknowledgment - if we have something to acknowledge*/
+// 		if(handleSMCancelUnicastTransmission(&ptpClock->msgTmp.signaling, &ptpClock->outgoingSignalingTmp, sourceAddress, ptpClock)) {
+// 			issueSignalingSCSI(&ptpClock->outgoingSignalingTmp, sourceAddress,rtOpts, ptpClock);
+// 		} 
+// 		break;
+// 	case TLV_ACKNOWLEDGE_CANCEL_UNICAST_TRANSMISSION:
+// 		DBGV("handleSignaling: Acknowledge Cancel Unicast Transmission\n");
+// 		if(!rtOpts->unicastNegotiation || rtOpts->ipMode!=IPMODE_UNICAST) {
+// 			DBGV("handleSignaling: Ignoring unicast negotiation message - not running unicast or negotiation not enabled\n");
+// 			ptpClock->counters.discardedMessages++;
+// 			goto end;
+// 		}
+// 		if( (ptpClock->portState==PTP_LISTENING && !rtOpts->unicastNegotiationListening) || 
+// 		    ptpClock->portState==PTP_DISABLED || ptpClock->portState == PTP_INITIALIZING ||
+// 		    ptpClock->portState==PTP_FAULTY) {
+// 	        	    DBG("Will not process acknowledge cancel unicast transmission in %s state\n",
+//                 			portState_getName(ptpClock->portState));
+// 			    ptpClock->counters.discardedMessages++;
+//         		    goto end;
+// 		}
+// 		unpackSMAcknowledgeCancelUnicastTransmission(ptpClock->msgIbuf + tlvOffset, &ptpClock->msgTmp.signaling, ptpClock);
+// 		handleSMAcknowledgeCancelUnicastTransmission(&ptpClock->msgTmp.signaling, sourceAddress, ptpClock);
+// 		break;
+// 	case TLV_GRANT_UNICAST_TRANSMISSION:
+// 		DBGV("handleSignaling: Grant Unicast Transmission\n");
+// 		if(!rtOpts->unicastNegotiation || rtOpts->ipMode!=IPMODE_UNICAST) {
+// 			DBGV("handleSignaling: Ignoring unicast negotiation message - not running unicast or negotiation not enabled\n");
+// 			ptpClock->counters.discardedMessages++;
+// 			goto end;
+// 		}
+// 		if( 
+// 		    ptpClock->portState==PTP_DISABLED || ptpClock->portState == PTP_INITIALIZING ||
+// 		    ptpClock->portState==PTP_FAULTY) {
+// 	        	    DBG("Will not process acknowledge cancel unicast transmission in %s state\n",
+//                 			portState_getName(ptpClock->portState));
+// 			    ptpClock->counters.discardedMessages++;
+//         		    goto end;
+// 		}
+// 		unpackSMGrantUnicastTransmission(ptpClock->msgIbuf + tlvOffset, &ptpClock->msgTmp.signaling, ptpClock);
+// 		handleSMGrantUnicastTransmission(&ptpClock->msgTmp.signaling, sourceAddress, ptpClock->unicastGrants, ptpClock->unicastDestinationCount, ptpClock);
+// 		if(ptpClock->delayMechanism == P2P) {
+// 		    handleSMGrantUnicastTransmission(&ptpClock->msgTmp.signaling, sourceAddress, &ptpClock->peerGrants, 1, ptpClock);
+// 		}
+// 		break;
+
+// 	default:
+
+// 		DBGV("handleSignaling: received unsupported TLV type %04x\n",
+// 		ptpClock->msgTmp.signaling.tlv->tlvType );
+// 		ptpClock->counters.discardedMessages++;
+// 		goto end;
+// 	}
+
+// 	end:
+// 	/* Movin' on up! */
+// 	tlvOffset += TL_LENGTH + ptpClock->msgTmp.signaling.tlv->lengthField;
+// 	/* cleanup msgTmp signalingTLV */
+// 	freeSignalingTLV(&ptpClock->msgTmp.signaling);
+// 	/* cleanup outgoing signalingTLV */
+// 	freeSignalingTLV(&ptpClock->outgoingSignalingTmp);
+// 	}
+
+//     	if(!tlvFound) {
+// 	    DBGV("handleSignaling: No TLVs in message\n");
+// 	    ptpClock->counters.messageFormatErrors++;
+// 	} else {
+// 	    ptpClock->counters.signalingMessagesReceived++;
+// 	    DBGV("handleSignaling: No more TLVs\n");
+// 	}
+// }
+
 void
-handleSignalingSCSI(MsgHeader *header,
+handleSignaling(MsgHeader *header,
 		 Boolean isFromSelf, uint64_t sourceAddress, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 {
 	DBGV("Signaling message received : \n");
@@ -1038,157 +1208,6 @@ handleSignalingSCSI(MsgHeader *header,
 		handleSMRequestUnicastTransmission(&ptpClock->msgTmp.signaling, &ptpClock->outgoingSignalingTmp, sourceAddress, rtOpts, ptpClock);
 		/* send back the outgoing signaling message */
 		if(ptpClock->outgoingSignalingTmp.tlv->tlvType == TLV_GRANT_UNICAST_TRANSMISSION) {
-			issueSignalingSCSI(&ptpClock->outgoingSignalingTmp, sourceAddress,rtOpts, ptpClock);
-		} 
-		break;
-	case TLV_CANCEL_UNICAST_TRANSMISSION:
-		DBGV("handleSignaling: Cancel Unicast Transmission\n");
-		if(!rtOpts->unicastNegotiation || rtOpts->ipMode!=IPMODE_UNICAST) {
-			DBGV("handleSignaling: Ignoring unicast negotiation message - not running unicast or negotiation not enabled\n");
-			ptpClock->counters.discardedMessages++;
-			goto end;
-		}
-		if( (ptpClock->portState==PTP_LISTENING && !rtOpts->unicastNegotiationListening) || 
-		    ptpClock->portState==PTP_DISABLED || ptpClock->portState == PTP_INITIALIZING ||
-		    ptpClock->portState==PTP_FAULTY) {
-	        	    DBG("Will not cancel unicast transmission requests in %s state\n",
-                			portState_getName(ptpClock->portState));
-			    ptpClock->counters.discardedMessages++;
-        		    goto end;
-		}
-		unpackSMCancelUnicastTransmission(ptpClock->msgIbuf + tlvOffset, &ptpClock->msgTmp.signaling, ptpClock);
-		/* send back the cancel acknowledgment - if we have something to acknowledge*/
-		if(handleSMCancelUnicastTransmission(&ptpClock->msgTmp.signaling, &ptpClock->outgoingSignalingTmp, sourceAddress, ptpClock)) {
-			issueSignalingSCSI(&ptpClock->outgoingSignalingTmp, sourceAddress,rtOpts, ptpClock);
-		} 
-		break;
-	case TLV_ACKNOWLEDGE_CANCEL_UNICAST_TRANSMISSION:
-		DBGV("handleSignaling: Acknowledge Cancel Unicast Transmission\n");
-		if(!rtOpts->unicastNegotiation || rtOpts->ipMode!=IPMODE_UNICAST) {
-			DBGV("handleSignaling: Ignoring unicast negotiation message - not running unicast or negotiation not enabled\n");
-			ptpClock->counters.discardedMessages++;
-			goto end;
-		}
-		if( (ptpClock->portState==PTP_LISTENING && !rtOpts->unicastNegotiationListening) || 
-		    ptpClock->portState==PTP_DISABLED || ptpClock->portState == PTP_INITIALIZING ||
-		    ptpClock->portState==PTP_FAULTY) {
-	        	    DBG("Will not process acknowledge cancel unicast transmission in %s state\n",
-                			portState_getName(ptpClock->portState));
-			    ptpClock->counters.discardedMessages++;
-        		    goto end;
-		}
-		unpackSMAcknowledgeCancelUnicastTransmission(ptpClock->msgIbuf + tlvOffset, &ptpClock->msgTmp.signaling, ptpClock);
-		handleSMAcknowledgeCancelUnicastTransmission(&ptpClock->msgTmp.signaling, sourceAddress, ptpClock);
-		break;
-	case TLV_GRANT_UNICAST_TRANSMISSION:
-		DBGV("handleSignaling: Grant Unicast Transmission\n");
-		if(!rtOpts->unicastNegotiation || rtOpts->ipMode!=IPMODE_UNICAST) {
-			DBGV("handleSignaling: Ignoring unicast negotiation message - not running unicast or negotiation not enabled\n");
-			ptpClock->counters.discardedMessages++;
-			goto end;
-		}
-		if( 
-		    ptpClock->portState==PTP_DISABLED || ptpClock->portState == PTP_INITIALIZING ||
-		    ptpClock->portState==PTP_FAULTY) {
-	        	    DBG("Will not process acknowledge cancel unicast transmission in %s state\n",
-                			portState_getName(ptpClock->portState));
-			    ptpClock->counters.discardedMessages++;
-        		    goto end;
-		}
-		unpackSMGrantUnicastTransmission(ptpClock->msgIbuf + tlvOffset, &ptpClock->msgTmp.signaling, ptpClock);
-		handleSMGrantUnicastTransmission(&ptpClock->msgTmp.signaling, sourceAddress, ptpClock->unicastGrants, ptpClock->unicastDestinationCount, ptpClock);
-		if(ptpClock->delayMechanism == P2P) {
-		    handleSMGrantUnicastTransmission(&ptpClock->msgTmp.signaling, sourceAddress, &ptpClock->peerGrants, 1, ptpClock);
-		}
-		break;
-
-	default:
-
-		DBGV("handleSignaling: received unsupported TLV type %04x\n",
-		ptpClock->msgTmp.signaling.tlv->tlvType );
-		ptpClock->counters.discardedMessages++;
-		goto end;
-	}
-
-	end:
-	/* Movin' on up! */
-	tlvOffset += TL_LENGTH + ptpClock->msgTmp.signaling.tlv->lengthField;
-	/* cleanup msgTmp signalingTLV */
-	freeSignalingTLV(&ptpClock->msgTmp.signaling);
-	/* cleanup outgoing signalingTLV */
-	freeSignalingTLV(&ptpClock->outgoingSignalingTmp);
-	}
-
-    	if(!tlvFound) {
-	    DBGV("handleSignaling: No TLVs in message\n");
-	    ptpClock->counters.messageFormatErrors++;
-	} else {
-	    ptpClock->counters.signalingMessagesReceived++;
-	    DBGV("handleSignaling: No more TLVs\n");
-	}
-}
-
-void
-handleSignaling(MsgHeader *header,
-		 Boolean isFromSelf, Integer32 sourceAddress, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
-{
-	DBGV("Signaling message received : \n");
-
-
-	if (isFromSelf) {
-		DBGV("handleSignaling: Ignore message from self \n");
-		return;
-	}
-
-	int tlvOffset = 0;
-	int tlvFound = 0;
-
-	while(msgUnpackSignaling(ptpClock->msgIbuf,&ptpClock->msgTmp.signaling, header, ptpClock, tlvOffset)) {
-
-	if(ptpClock->msgTmp.signaling.tlv == NULL) {
-
-	    	if(tlvFound==0) {
-		    DBGV("handleSignaling: No TLVs in message\n");
-		    ptpClock->counters.messageFormatErrors++;
-		} else {
-		    DBGV("handleSignaling: No more TLVs\n");
-		}
-		return;
-	}
-
-	tlvFound++;
-
-	/* accept the message if directed either to us or to all-ones */
-        if(!acceptPortIdentity(ptpClock->portIdentity, ptpClock->msgTmp.signaling.targetPortIdentity))
-        {
-                DBGV("handleSignaling: The signaling message was not accepted");
-		ptpClock->counters.discardedMessages++;
-                goto end;
-        }
-
-	/* Can we handle this? */
-
-	switch(ptpClock->msgTmp.signaling.tlv->tlvType)
-	{
-	case TLV_REQUEST_UNICAST_TRANSMISSION:
-		DBGV("handleSignaling: Request Unicast Transmission\n");
-		if(!rtOpts->unicastNegotiation || rtOpts->ipMode!=IPMODE_UNICAST) {
-			DBGV("handleSignaling: Ignoring unicast negotiation message - not running unicast or negotiation not enabled\n");
-			ptpClock->counters.discardedMessages++;
-			goto end;
-		}
-		if( (ptpClock->portState==PTP_LISTENING && !rtOpts->unicastNegotiationListening) || 
-		    ptpClock->portState==PTP_DISABLED || ptpClock->portState == PTP_INITIALIZING ||
-		    ptpClock->portState==PTP_FAULTY) {
-	        	    DBG("Will not grant unicast transmission requests in %s state\n",
-                			portState_getName(ptpClock->portState));
-			    ptpClock->counters.discardedMessages++;
-        		    goto end;
-		}
-		unpackSMRequestUnicastTransmission(ptpClock->msgIbuf + tlvOffset, &ptpClock->msgTmp.signaling, ptpClock);
-		handleSMRequestUnicastTransmission(&ptpClock->msgTmp.signaling, &ptpClock->outgoingSignalingTmp, sourceAddress, rtOpts, ptpClock);
-		/* send back the outgoing signaling message */
-		if(ptpClock->outgoingSignalingTmp.tlv->tlvType == TLV_GRANT_UNICAST_TRANSMISSION) {
 			issueSignaling(&ptpClock->outgoingSignalingTmp, sourceAddress,rtOpts, ptpClock);
 		} 
 		break;
@@ -1209,7 +1228,7 @@ handleSignaling(MsgHeader *header,
 		}
 		unpackSMCancelUnicastTransmission(ptpClock->msgIbuf + tlvOffset, &ptpClock->msgTmp.signaling, ptpClock);
 		/* send back the cancel acknowledgment - if we have something to acknowledge*/
-		if(handleSMCancelUnicastTransmission(&ptpClock->msgTmp.signaling, &ptpClock->outgoingSignalingTmp, sourceAddress, ptpClock)) {
+		if(handleSMCancelUnicastTransmission(&ptpClock->msgTmp.signaling, &ptpClock->outgoingSignalingTmp, sourceAddress, ptpClock,rtOpts)) {
 			issueSignaling(&ptpClock->outgoingSignalingTmp, sourceAddress,rtOpts, ptpClock);
 		} 
 		break;
@@ -1229,7 +1248,7 @@ handleSignaling(MsgHeader *header,
         		    goto end;
 		}
 		unpackSMAcknowledgeCancelUnicastTransmission(ptpClock->msgIbuf + tlvOffset, &ptpClock->msgTmp.signaling, ptpClock);
-		handleSMAcknowledgeCancelUnicastTransmission(&ptpClock->msgTmp.signaling, sourceAddress, ptpClock);
+		handleSMAcknowledgeCancelUnicastTransmission(&ptpClock->msgTmp.signaling, sourceAddress, ptpClock, rtOpts);
 		break;
 	case TLV_GRANT_UNICAST_TRANSMISSION:
 		DBGV("handleSignaling: Grant Unicast Transmission\n");
@@ -1247,9 +1266,9 @@ handleSignaling(MsgHeader *header,
         		    goto end;
 		}
 		unpackSMGrantUnicastTransmission(ptpClock->msgIbuf + tlvOffset, &ptpClock->msgTmp.signaling, ptpClock);
-		handleSMGrantUnicastTransmission(&ptpClock->msgTmp.signaling, sourceAddress, ptpClock->unicastGrants, ptpClock->unicastDestinationCount, ptpClock);
+		handleSMGrantUnicastTransmission(&ptpClock->msgTmp.signaling, sourceAddress, ptpClock->unicastGrants, ptpClock->unicastDestinationCount, ptpClock, rtOpts);
 		if(ptpClock->delayMechanism == P2P) {
-		    handleSMGrantUnicastTransmission(&ptpClock->msgTmp.signaling, sourceAddress, &ptpClock->peerGrants, 1, ptpClock);
+		    handleSMGrantUnicastTransmission(&ptpClock->msgTmp.signaling, sourceAddress, &ptpClock->peerGrants, 1, ptpClock, rtOpts);
 		}
 		break;
 

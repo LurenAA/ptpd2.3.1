@@ -659,7 +659,7 @@ typedef struct {
 } UnicastGrantData;
 
 struct UnicastGrantTable {
-	uint64_t SCSItransportAddress; /* scsi address of slave(or master)*/
+	uint64_t transportAddressSCSI; /* scsi address of slave(or master)*/
 	Integer32		transportAddress;	/* IP address of slave (or master) */
 	UInteger8		domainNumber;		/* domain of the master - as used by Telecom Profile */
 	UInteger8		localPreference;		/* local preference - as used by Telecom profile */
@@ -672,6 +672,7 @@ struct UnicastGrantTable {
 
 /* Unicast destination configuration: Address, domain, preference, last Sync timestamp sent */
 typedef struct {
+	uint64_t        transportAddressSCSI; 
     Integer32 		transportAddress;		/* destination address */
     UInteger8 		domainNumber;			/* domain number - for slaves with masters in multiple domains */
     UInteger8 		localPreference;		/* local preference to influence BMC */
@@ -900,6 +901,10 @@ typedef struct {
 	Integer32	lastSyncDst;		/* captures the destination address for last sync, so we know where to send the followUp */
 	Integer32	lastPdelayRespDst;	/* captures the destination address of last pdelayResp so we know where to send the pdelayRespfollowUp */
 
+	uint64_t 	masterAddrSCSI;                           // used for hybrid mode, when receiving announces
+	uint64_t 	LastSlaveAddrSCSI;                        // used for hybrid mode, when receiving delayreqs
+	uint64_t		lastSyncDstSCSI;		/* captures the destination address for last sync, so we know where to send the followUp */
+	uint64_t	    lastPdelayRespDstSCSI;	/* captures the destination address of last pdelayResp so we know where to send the pdelayRespfollowUp */
 	/*
 	 * counters - useful for debugging and monitoring,
 	 * should be exposed through management messages
@@ -966,8 +971,6 @@ typedef struct {
 #if 0
 	Boolean addOffset;
 #endif
-	uint64_t lastPdelayRespDstSCSI;
-	uint64_t lastSyncDstSCSI;
 } PtpClock;
 
 /**

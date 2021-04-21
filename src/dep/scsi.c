@@ -1925,6 +1925,15 @@ void* end_fresh_loop(void* arg) {
     assert(0);
 }
 
+static
+uint64_t translateStrToUl(const char* str) {
+    char *end_ptr;
+    uint64_t res = strtoul(str, &end_ptr, HEX);
+    if(end_ptr == str || res == ULONG_MAX) 
+        RAISE(EINVAL_ERROR);
+    return res;
+}
+
 Boolean 
 SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     assert(scsi);
@@ -1934,6 +1943,33 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     int j = 0, i = 0;
     pthread_mutexattr_t attr;
     int res = 0;
+
+    if(rtOpts->unicastDestinationsSet) {
+        if(strlen(rtOpts->unicastDestinations) > 0) {
+            int found = 0;
+            char* token, *save_ptr;
+            char* tex__;
+            char* tex_ = strdup(rtOpts->unicastDestinations);
+            if(!tex_)
+                RAISE(MALLOC_ERROR);
+            for(tex__ = tex_; found < UNICAST_MAX_DESTINATIONS; tex__ = NULL) {
+                token = strtok_r(tex__, ",;\t", &save_ptr);
+                if(token == NULL)
+                    break;
+                ptpClock->unicastDestinations[found].transportAddressSCSI = translateStrToUl(token);
+                ++found;
+            }
+
+            if(tex_) 
+                free(tex_);
+            
+            ptpClock->unicastDestinationCount = found;
+        }
+    }
+
+    if(rtOpts->delayMechanism==P2P && rtOpts->ipMode==IPMODE_UNICAST) {
+        ptpClock->unicastPeerDestination.transportAddressSCSI = translateStrToUl(rtOpts->unicastPeerDestination);
+    }
 
     if(!testSCSIInterface(rtOpts->ifaceName, rtOpts,&scsi->info))
         return FALSE;
@@ -2037,6 +2073,7 @@ ssize_t scsiRecvEvent(Octet * buf, TimeInternal * time, SCSIPath * scsi, int fla
     scsi->lastDestAddr = 0;
     SCSIREC* recvptr = NULL;
     int res;
+    scsi->lastDestAddr = 0;
 
     if(scsi->recv_event_length <= 0)
         return 0; 
@@ -2064,8 +2101,11 @@ ssize_t scsiRecvEvent(Octet * buf, TimeInternal * time, SCSIPath * scsi, int fla
         RAISE(PTHREAD_MUTEX_ERROR);
     
     scsi->receivedPacketsTotal++;
-    scsi->receivedPackets++;
-    
+    if(!scsi->lastSourceAddr || scsi->lastSourceAddr != scsi->info.wwn)
+        scsi->receivedPackets++;
+
+    scsi->lastDestAddr = scsi->info.wwn;
+
     return ret;
 }
 
@@ -2077,9 +2117,11 @@ ssize_t scsiRecvGeneral(Octet * buf, SCSIPath* scsi) {
 
     if(scsi->recv_general_length <= 0)
         return 0; 
+
     res = pthread_mutex_lock(&scsi->recv_mutex);
     if(res) 
         RAISE(PTHREAD_MUTEX_ERROR);
+
     recvptr = scsi->recv_general_head;
     while(recvptr != NULL && recvptr->isEvent != FALSE)
         recvptr = recvptr->next;
@@ -2098,9 +2140,31 @@ ssize_t scsiRecvGeneral(Octet * buf, SCSIPath* scsi) {
     if(res) 
         RAISE(PTHREAD_MUTEX_ERROR);
     scsi->receivedPacketsTotal++;
-    scsi->receivedPackets++;
+
+    if(!scsi->lastSourceAddr || (scsi->lastSourceAddr != scsi->info.wwn))
+        scsi->receivedPackets++;
     
     return ret;
+}
+
+static 
+int findValidFd(SCSIPath* scsi, uint64_t dst) {
+    assert(scsi);
+    int res = -1;
+    if(!scsi->valid_end_array_length || !scsi->valid_end_array_capacity)
+        return -1;
+    int rw = pthread_rwlock_rdlock(&scsi->fd_rwlock);
+    if(rw)
+        RAISE(PTHREAD_RDLOCK_ERROR);
+    pthread_cleanup_push(cleanUpWRLock, &scsi->fd_rwlock);
+    for(int i = 0; i < scsi->valid_end_array_capacity; ++i) {
+        if(scsi->valid_end_array[i] && scsi->valid_end_array[i]->wwn == dst) {
+            res = scsi->valid_end_array[i]->fd;
+            break;
+        }
+    }
+    pthread_cleanup_pop(1);
+    return res;
 }
 
 Boolean 
@@ -2113,15 +2177,28 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
     int sendn = 0;
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
-    for(i = 0; i < scsi->valid_end_array_capacity; i++) {
-        if(scsi->valid_end_array[i]) {
-            res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
+    if(destinationAddress) {
+        *(char *)(buf + 6) |= PTP_UNICAST;
+        int fd = findValidFd(scsi, destinationAddress);
+        if(fd != -1) {
+            res = Command(scsi, fd,WRITE_16, (unsigned char*)buf, length);
             if(!res) {
                 ret = FALSE;
-                DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
-                continue;
+                DBG("write to %lx fails %s", destinationAddress, STRERROR(errno));
+            } else 
+                ret = FALSE;
+        }
+    } else {
+        for(i = 0; i < scsi->valid_end_array_capacity; i++) {
+            if(scsi->valid_end_array[i]) {
+                res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
+                if(!res) {
+                    ret = FALSE;
+                    DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
+                    continue;
+                }
+                ++sendn;
             }
-            ++sendn;
         }
     }
     // if(sendn > 0) {
@@ -2131,7 +2208,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
             scsi->sentPacketsTotal++;
         }
     // }
-    return ret;
+    return TRUE;
 }
 
 ssize_t 
@@ -2152,15 +2229,28 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
         DBG("%s\n", STRERROR(res));
         RAISE(GENER_ERROR);
     }
-    for(i = 0; i < scsi->valid_end_array_capacity; i++) {
-        if(scsi->valid_end_array[i]) {
-            res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
+    if(destinationAddress) {
+        *(char *)(buf + 6) |= PTP_UNICAST;
+        int fd = findValidFd(scsi, destinationAddress);
+        if(fd != -1) {
+            res = Command(scsi, fd,WRITE_16, (unsigned char*)buf, length);
             if(!res) {
                 ret = FALSE;
-                DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
-                continue;
+                DBG("write to %lx fails %s", destinationAddress, STRERROR(errno));
             }
-            ++sendn;
+        } else 
+            ret = FALSE;
+    } else {
+        for(i = 0; i < scsi->valid_end_array_capacity; i++) {
+            if(scsi->valid_end_array[i]) {
+                res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
+                if(!res) {
+                    ret = FALSE;
+                    DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
+                    continue;
+                }
+                ++sendn;
+            }
         }
     }
     // res = clock_gettime(CLOCK_REALTIME, &ntime_);
@@ -2183,7 +2273,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
             scsi->sentPacketsTotal++;
         }
     // }
-    return ret;
+    return TRUE;
 }
 
 ssize_t 
@@ -2198,15 +2288,28 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
     res = clock_gettime(CLOCK_REALTIME, &ntime);
-    for(i = 0; i < scsi->valid_end_array_capacity; i++) {
-        if(scsi->valid_end_array[i]) {
-            res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
+    if(destinationAddress) {
+        *(char *)(buf + 6) |= PTP_UNICAST;
+        int fd = findValidFd(scsi, destinationAddress);
+        if(fd != -1) {
+            res = Command(scsi, fd,WRITE_16, (unsigned char*)buf, length);
             if(!res) {
                 ret = FALSE;
-                DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
-                continue;
+                DBG("write to %lx fails %s", destinationAddress, STRERROR(errno));
+            } else 
+             ret = FALSE;
+        }
+    } else {
+        for(i = 0; i < scsi->valid_end_array_capacity; i++) {
+            if(scsi->valid_end_array[i]) {
+                res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
+                if(!res) {
+                    ret = FALSE;
+                    DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
+                    continue;
+                }
+                ++sendn;
             }
-            ++sendn;
         }
     }
     // if(sendn > 0) {
@@ -2223,7 +2326,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
             scsi->sentPacketsTotal++;
         }
     // }
-    return ret;
+    return TRUE;
 }
 
 ssize_t 
@@ -2237,15 +2340,29 @@ scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
     int sendn = 0;
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
-    for(i = 0; i < scsi->valid_end_array_capacity; i++) {
-        if(scsi->valid_end_array[i]) {
-            res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
+    if(destinationAddress) {
+        *(char *)(buf + 6) |= PTP_UNICAST;
+        int fd = findValidFd(scsi, destinationAddress);
+        if(fd != -1) {
+            res = Command(scsi, fd,WRITE_16, (unsigned char*)buf, length);
             if(!res) {
                 ret = FALSE;
-                DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
-                continue;
+                DBG("write to %lx fails %s", destinationAddress, STRERROR(errno));
+            }else 
+            ret = FALSE;
+        }
+    }
+    else {
+        for(i = 0; i < scsi->valid_end_array_capacity; i++) {
+            if(scsi->valid_end_array[i]) {
+                res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
+                if(!res) {
+                    ret = FALSE;
+                    DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
+                    continue;
+                }
+                ++sendn;
             }
-            ++sendn;
         }
     }
     // if(sendn > 0) {
@@ -2255,5 +2372,5 @@ scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
             scsi->sentPacketsTotal++;
         }
     // }
-    return ret;
+    return TRUE;
 }

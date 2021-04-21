@@ -831,12 +831,17 @@ periodicUpdate(const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 
     len += snprint_PortIdentity(masterIdBuf + len, sizeof(masterIdBuf) - len,
 	    &ptpClock->parentPortIdentity);
-    if(ptpClock->masterAddr) {
-	char strAddr[MAXHOSTNAMELEN];
-	struct in_addr tmpAddr;
-	tmpAddr.s_addr = ptpClock->masterAddr;
-	inet_ntop(AF_INET, (struct sockaddr_in *)(&tmpAddr), strAddr, MAXHOSTNAMELEN);
-	len += snprintf(masterIdBuf + len, sizeof(masterIdBuf) - len, " (IPv4:%s)",strAddr);
+    if((ptpClock->masterAddr && rtOpts->transport != SCSI_FC)|| 
+	(ptpClock->masterAddrSCSI && rtOpts->transport == SCSI_FC)) {
+		char strAddr[MAXHOSTNAMELEN];
+		if(rtOpts->transport != SCSI_FC) {
+			struct in_addr tmpAddr;
+			tmpAddr.s_addr = ptpClock->masterAddr;
+			inet_ntop(AF_INET, (struct sockaddr_in *)(&tmpAddr), strAddr, MAXHOSTNAMELEN);
+			len += snprintf(masterIdBuf + len, sizeof(masterIdBuf) - len, " (IPv4:%s)",strAddr);
+		} else {
+			len += snprintf(masterIdBuf + len, sizeof(masterIdBuf) - len,"(SCSI:0x%lx)", ptpClock->masterAddrSCSI);
+		}
     }
 
     if(ptpClock->delayMechanism == P2P) {

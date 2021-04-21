@@ -54,35 +54,31 @@
 #include "ptpd.h"
 void SCSIhandle(const RunTimeOpts *rtOpts, PtpClock *ptpClock);
 ssize_t scsiSendEvent(Octet * buf, UInteger16 length, SCSIPath * scsi, const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim);
-static uint64_t lookupSyncIndexSCSI(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntry *index);
-static TimeInternal issueSyncSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
-static void issueAnnounceSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
-void handleSignalingSCSI(MsgHeader *header,Boolean isFromSelf, uint64_t sourceAddress, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
-static void issueManagementErrorStatusSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
-static void issueManagementRespOrAckSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
-static void issuePdelayRespFollowUpSCSI(const TimeInternal *tint, MsgHeader *header, uint64_t dst,const RunTimeOpts *rtOpts, PtpClock *ptpClock, const UInteger16 sequenceId);
-static void processPdelayRespFromSelfSCSI(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId);
-static void handlePdelayRespSCSI(const MsgHeader *header, TimeInternal *tint,ssize_t length, Boolean isFromSelf, uint64_t sourceAddress, uint64_t destinationAddress,const RunTimeOpts *rtOpts, PtpClock *ptpClock);
-static void handlePdelayReqSCSI(MsgHeader *header, ssize_t length, const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
-static void issuePdelayRespSCSI(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
-static void issueDelayRespSCSI(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
-void handleDelayReqSCSI(const MsgHeader *header, ssize_t length, const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf,const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+// static TimeInternal issueSyncSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
+// static void issueAnnounceSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
+// void handleSignalingSCSI(MsgHeader *header,Boolean isFromSelf, uint64_t sourceAddress, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+// static void issueManagementErrorStatusSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+// static void issueManagementRespOrAckSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
+// static void issuePdelayRespFollowUpSCSI(const TimeInternal *tint, MsgHeader *header, uint64_t dst,const RunTimeOpts *rtOpts, PtpClock *ptpClock, const UInteger16 sequenceId);
+// static void processPdelayRespFromSelfSCSI(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId);
+// static void handlePdelayRespSCSI(const MsgHeader *header, TimeInternal *tint,ssize_t length, Boolean isFromSelf, uint64_t sourceAddress, uint64_t destinationAddress,const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+// static void handlePdelayReqSCSI(MsgHeader *header, ssize_t length, const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+// static void issuePdelayRespSCSI(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
+// static void issueDelayRespSCSI(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,PtpClock *ptpClock);
+// void handleDelayReqSCSI(const MsgHeader *header, ssize_t length, const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf,const RunTimeOpts *rtOpts, PtpClock *ptpClock);
 ssize_t scsiRecvGeneral(Octet * buf, SCSIPath* scsi);
 Boolean scsiShutdown(SCSIPath* scsi);
 Boolean SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock);
 Boolean doInit(RunTimeOpts*,PtpClock*);
 static void doState(const RunTimeOpts*,PtpClock*);
-static void handleSyncSCSI(const MsgHeader *header, ssize_t length, TimeInternal *tint, Boolean isFromSelf, uint64_t sourceAddress, uint64_t destinationAddress,const RunTimeOpts *rtOpts, PtpClock *ptpClock);
 Boolean scsiSendGeneral(Octet * buf, UInteger16 length, SCSIPath * scsi, const RunTimeOpts *rtOpts, uint64_t destinationAddress);
-static void issueFollowupSCSI(const TimeInternal *tint,const RunTimeOpts *rtOpts,PtpClock *ptpClock, uint64_t dst, UInteger16 sequenceId);
 void handle(const RunTimeOpts*,PtpClock*);
-static void processSyncFromSelfSCSI(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId);
 static void handleAnnounce(MsgHeader*, ssize_t,Boolean, const RunTimeOpts*,PtpClock*);
-static void handleSync(const MsgHeader*, ssize_t,TimeInternal*,Boolean,Integer32, Integer32, const RunTimeOpts*,PtpClock*);
+static void handleSync(const MsgHeader*, ssize_t,TimeInternal*,Boolean,uint64_t, uint64_t, const RunTimeOpts*,PtpClock*, int);
 static void handleFollowUp(const MsgHeader*, ssize_t,Boolean,const RunTimeOpts*,PtpClock*);
-static void handlePdelayReq(MsgHeader*, ssize_t,const TimeInternal*, Integer32, Boolean,const RunTimeOpts*,PtpClock*);
-static void handleDelayReq(const MsgHeader*, ssize_t, const TimeInternal*,Integer32, Boolean,const RunTimeOpts*,PtpClock*);
-static void handlePdelayResp(const MsgHeader*, TimeInternal* ,ssize_t,Boolean, Integer32, Integer32, const RunTimeOpts*,PtpClock*);
+static void handlePdelayReq(MsgHeader*, ssize_t,const TimeInternal*, uint64_t, Boolean,const RunTimeOpts*,PtpClock*);
+static void handleDelayReq(const MsgHeader*, ssize_t, const TimeInternal*,uint64_t, Boolean,const RunTimeOpts*,PtpClock*, int );
+static void handlePdelayResp(const MsgHeader*, TimeInternal* ,ssize_t,Boolean, uint64_t, uint64_t, const RunTimeOpts*,PtpClock*);
 static void handleDelayResp(const MsgHeader*, ssize_t, const RunTimeOpts*,PtpClock*);
 static void handlePdelayRespFollowUp(const MsgHeader*, ssize_t, Boolean, const RunTimeOpts*,PtpClock*);
 static void handleManagement(MsgHeader*, Boolean,const RunTimeOpts*,PtpClock*);
@@ -91,16 +87,16 @@ static void handleManagement(MsgHeader*, Boolean,const RunTimeOpts*,PtpClock*);
 
 #ifndef PTPD_SLAVE_ONLY /* does not get compiled when building slave only */
 static void issueAnnounce(const RunTimeOpts*,PtpClock*);
-static void issueAnnounceSingle(Integer32, UInteger16*, const RunTimeOpts*,PtpClock*);
+static void issueAnnounceSingle(uint64_t, UInteger16*, const RunTimeOpts*,PtpClock*);
 static void issueSync(const RunTimeOpts*,PtpClock*);
-static TimeInternal issueSyncSingle(Integer32, UInteger16*, const RunTimeOpts*,PtpClock*);
-static void issueFollowup(const TimeInternal*,const RunTimeOpts*,PtpClock*, Integer32, const UInteger16);
+static TimeInternal issueSyncSingle(uint64_t, UInteger16*, const RunTimeOpts*,PtpClock*);
+static void issueFollowup(const TimeInternal*,const RunTimeOpts*,PtpClock*, uint64_t, const UInteger16, int);
 #endif /* PTPD_SLAVE_ONLY */
 static void issuePdelayReq(const RunTimeOpts*,PtpClock*);
 static void issueDelayReq(const RunTimeOpts*,PtpClock*);
-static void issuePdelayResp(const TimeInternal*,MsgHeader*,Integer32,const RunTimeOpts*,PtpClock*);
-static void issueDelayResp(const TimeInternal*,MsgHeader*,Integer32,const RunTimeOpts*,PtpClock*);
-static void issuePdelayRespFollowUp(const TimeInternal*,MsgHeader*, Integer32, const RunTimeOpts*,PtpClock*, const UInteger16);
+static void issuePdelayResp(const TimeInternal*,MsgHeader*,uint64_t,const RunTimeOpts*,PtpClock*);
+static void issueDelayResp(const TimeInternal*,MsgHeader*,uint64_t,const RunTimeOpts*,PtpClock*);
+static void issuePdelayRespFollowUp(const TimeInternal*,MsgHeader*, uint64_t, const RunTimeOpts*,PtpClock*, const UInteger16);
 #if 0
 static void issueManagement(MsgHeader*,MsgManagement*,const RunTimeOpts*,PtpClock*);
 #endif
@@ -110,26 +106,26 @@ static void issueManagementErrorStatus(MsgManagement*,const RunTimeOpts*,PtpCloc
 static void processMessage(const RunTimeOpts* rtOpts, PtpClock* ptpClock, TimeInternal* timeStamp, ssize_t length);
 
 #ifndef PTPD_SLAVE_ONLY /* does not get compiled when building slave only */
-static void processSyncFromSelf(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, Integer32 dst, const UInteger16 sequenceId);
-static void indexSync(TimeInternal *timeStamp, UInteger16 sequenceId, Integer32 transportAddress, SyncDestEntry *index);
+static void processSyncFromSelf(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId, int type);
+static void indexSync(TimeInternal *timeStamp, UInteger16 sequenceId, uint64_t transportAddress, SyncDestEntry *index, const RunTimeOpts *rtOpts);
 #endif /* PTPD_SLAVE_ONLY */
 
 static void processDelayReqFromSelf(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock);
 static void processPdelayReqFromSelf(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock);
-static void processPdelayRespFromSelf(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, Integer32 dst, const UInteger16 sequenceId);
+static void processPdelayRespFromSelf(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId);
 
 /* this shouldn't really be in protocol.c, it will be moved later */
 static void timestampCorrection(const RunTimeOpts * rtOpts, PtpClock *ptpClock, TimeInternal *timeStamp);
 
-static Integer32 lookupSyncIndex(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntry *index);
-static Integer32 findSyncDestination(TimeInternal *timeStamp, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+static uint64_t lookupSyncIndex(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntry *index, int type);
+static uint64_t findSyncDestination(TimeInternal *timeStamp, const RunTimeOpts *rtOpts, PtpClock *ptpClock, int type);
 ssize_t scsiRecvEvent(Octet * buf, TimeInternal * time, SCSIPath * scsi, int flags) ;
 
 #ifndef PTPD_SLAVE_ONLY
 
 /* store transportAddress in an index table */
 static void
-indexSync(TimeInternal *timeStamp, UInteger16 sequenceId, Integer32 transportAddress, SyncDestEntry *index)
+indexSync(TimeInternal *timeStamp, UInteger16 sequenceId, uint64_t transportAddress, SyncDestEntry *index, const RunTimeOpts *rtOpts)
 {
 
     uint32_t hash = 0;
@@ -145,68 +141,53 @@ indexSync(TimeInternal *timeStamp, UInteger16 sequenceId, Integer32 transportAdd
 
     hash = fnvHash(timeStamp, sizeof(TimeInternal), UNICAST_MAX_DESTINATIONS);
 
-    if(index[hash].transportAddress) {
-	DBG("indexSync: hash collision - clearing entry %s:%04x\n", inet_ntoa(tmpAddr), hash);
-	index[hash].transportAddress = 0;
-    } else {
-	DBG("indexSync: indexed successfully %s:%04x\n", inet_ntoa(tmpAddr), hash);
-	index[hash].transportAddress = transportAddress;
-    }
+	if(rtOpts->transport != SCSI_FC) {
+		if(index[hash].transportAddress) {
+			DBG("indexSync: hash collision - clearing entry %s:%04x\n", inet_ntoa(tmpAddr), hash);
+			index[hash].transportAddress = 0;
+		} else {
+			DBG("indexSync: indexed successfully %s:%04x\n", inet_ntoa(tmpAddr), hash);
+			index[hash].transportAddress = (Integer32)transportAddress;
+		}
+	} else {
+		if(index[hash].transportAddressSCSI) {
+			DBG("indexSync: hash collision - clearing entry %s:%04x\n", inet_ntoa(tmpAddr), hash);
+			index[hash].transportAddressSCSI = 0;
+		} else {
+			DBG("indexSync: indexed successfully %s:%04x\n", inet_ntoa(tmpAddr), hash);
+			index[hash].transportAddressSCSI = transportAddress;
+		}
+	}
 
 }
 
-static void
-indexSyncSCSI(TimeInternal *timeStamp, UInteger16 sequenceId, uint64_t transportAddressSCSI, SyncDestEntry *index)
-{
+// static void
+// indexSyncSCSI(TimeInternal *timeStamp, UInteger16 sequenceId, uint64_t transportAddressSCSI, SyncDestEntry *index)
+// {
 
-    uint32_t hash = 0;
+//     uint32_t hash = 0;
 
-    if(timeStamp == NULL || index == NULL) {
-	return;
-    }
+//     if(timeStamp == NULL || index == NULL) {
+// 	return;
+//     }
 
-    hash = fnvHash(timeStamp, sizeof(TimeInternal), UNICAST_MAX_DESTINATIONS);
+//     hash = fnvHash(timeStamp, sizeof(TimeInternal), UNICAST_MAX_DESTINATIONS);
 
-    if(index[hash].transportAddressSCSI) {
-	// DBG("indexSync: hash collision - clearing entry %s:%04x\n", inet_ntoa(tmpAddr), hash);
-	index[hash].transportAddressSCSI = 0;
-    } else {
-	// DBG("indexSync: indexed successfully %s:%04x\n", inet_ntoa(tmpAddr), hash);
-	index[hash].transportAddressSCSI = transportAddressSCSI;
-    }
+//     if(index[hash].transportAddressSCSI) {
+// 	// DBG("indexSync: hash collision - clearing entry %s:%04x\n", inet_ntoa(tmpAddr), hash);
+// 	index[hash].transportAddressSCSI = 0;
+//     } else {
+// 	// DBG("indexSync: indexed successfully %s:%04x\n", inet_ntoa(tmpAddr), hash);
+// 	index[hash].transportAddressSCSI = transportAddressSCSI;
+//     }
 
-}
+// }
 
 #endif /* PTPD_SLAVE_ONLY */
 
 /* sync destination index lookup */
-static Integer32
-lookupSyncIndex(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntry *index)
-{
-
-    uint32_t hash = 0;
-    Integer32 previousAddress;
-
-    if(timeStamp == NULL || index == NULL) {
-	return 0;
-    }
-
-    hash = fnvHash(timeStamp, sizeof(TimeInternal), UNICAST_MAX_DESTINATIONS);
-
-    if(index[hash].transportAddress == 0) {
-	DBG("lookupSyncIndex: cache miss\n");
-	return 0;
-    } else {
-	DBG("lookupSyncIndex: cache hit - clearing old entry\n");
-	previousAddress =  index[hash].transportAddress;
-	index[hash].transportAddress = 0;
-	return previousAddress;
-    }
-
-}
-
 static uint64_t
-lookupSyncIndexSCSI(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntry *index)
+lookupSyncIndex(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntry *index, int type)
 {
 
     uint32_t hash = 0;
@@ -218,21 +199,32 @@ lookupSyncIndexSCSI(TimeInternal *timeStamp, UInteger16 sequenceId, SyncDestEntr
 
     hash = fnvHash(timeStamp, sizeof(TimeInternal), UNICAST_MAX_DESTINATIONS);
 
-    if(index[hash].transportAddressSCSI == 0) {
-	DBG("lookupSyncIndex: cache miss\n");
-	return 0;
-    } else {
-	DBG("lookupSyncIndex: cache hit - clearing old entry\n");
-	previousAddress =  index[hash].transportAddressSCSI;
-	index[hash].transportAddressSCSI = 0;
-	return previousAddress;
-    }
-
+	if(type != SCSI_FC) {
+		if(index[hash].transportAddress == 0) {
+		DBG("lookupSyncIndex: cache miss\n");
+		return 0;
+		} else {
+		DBG("lookupSyncIndex: cache hit - clearing old entry\n");
+		previousAddress =  index[hash].transportAddress;
+		index[hash].transportAddress = 0;
+		return previousAddress;
+		}
+	} else {
+		if(index[hash].transportAddressSCSI == 0) {
+		DBG("lookupSyncIndex: cache miss\n");
+		return 0;
+		} else {
+		DBG("lookupSyncIndex: cache hit - clearing old entry\n");
+		previousAddress =  index[hash].transportAddressSCSI;
+		index[hash].transportAddressSCSI = 0;
+		return previousAddress;
+		}
+	}
 }
 
 /* iterative search for Sync destination for the given cached timestamp */
-static Integer32
-findSyncDestination(TimeInternal *timeStamp, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
+static uint64_t
+findSyncDestination(TimeInternal *timeStamp, const RunTimeOpts *rtOpts, PtpClock *ptpClock, int type)
 {
 
     int i = 0;
@@ -243,13 +235,13 @@ findSyncDestination(TimeInternal *timeStamp, const RunTimeOpts *rtOpts, PtpClock
 		if( (timeStamp->seconds == ptpClock->unicastGrants[i].lastSyncTimestamp.seconds) &&
 		    (timeStamp->nanoseconds == ptpClock->unicastGrants[i].lastSyncTimestamp.nanoseconds)) {
 			clearTime(&ptpClock->unicastGrants[i].lastSyncTimestamp);
-			return ptpClock->unicastGrants[i].transportAddress;
+			return type != SCSI_FC ?ptpClock->unicastGrants[i].transportAddress : ptpClock->unicastGrants[i].transportAddressSCSI;
 		    }
 	} else {
 		if( (timeStamp->seconds == ptpClock->unicastDestinations[i].lastSyncTimestamp.seconds) &&
 		    (timeStamp->nanoseconds == ptpClock->unicastDestinations[i].lastSyncTimestamp.nanoseconds)) {
 			clearTime(&ptpClock->unicastDestinations[i].lastSyncTimestamp);
-			return ptpClock->unicastDestinations[i].transportAddress;
+			return type != SCSI_FC ? ptpClock->unicastDestinations[i].transportAddress : ptpClock->unicastDestinations[i].transportAddressSCSI;
 		    }
 	}
     }
@@ -502,7 +494,10 @@ toState(UInteger8 state, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		    cancelAllGrants(ptpClock->unicastGrants, ptpClock->unicastDestinationCount,
 				rtOpts, ptpClock);
 		}
-		ptpClock->masterAddr = 0;
+		if(rtOpts->transport != SCSI_FC)
+			ptpClock->masterAddr = 0;
+		else 
+			ptpClock->masterAddrSCSI = 0;
 		/* see? NOW we're in disabled state */
 		ptpClock->portState = PTP_DISABLED;
 
@@ -574,9 +569,10 @@ toState(UInteger8 state, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 				(ptpClock->announceReceiptTimeout) * 
 				(pow(2,ptpClock->logAnnounceInterval)));
 				ptpClock->announceTimeouts = 0;
-
-		ptpClock->masterAddr = 0;
-
+		if(rtOpts->transport != SCSI_FC)
+			ptpClock->masterAddr = 0;
+		else 
+			ptpClock->masterAddrSCSI = 0;
 		/* 
 		 * Log status update only once - condition must be checked before we write the new state,
 		 * but the new state must be eritten before the log message...
@@ -611,8 +607,11 @@ toState(UInteger8 state, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 		ptpClock->portState = PTP_MASTER;
 		displayStatus(ptpClock, "Now in state: ");
 
-		ptpClock->masterAddr = 0;
-
+		if(rtOpts->transport != SCSI_FC)
+			ptpClock->masterAddr = 0;
+		else 
+			ptpClock->masterAddrSCSI = 0;
+			
 		break;
 #endif /* PTPD_SLAVE_ONLY */
 	case PTP_PASSIVE:
@@ -1383,49 +1382,49 @@ processMessage(const RunTimeOpts* rtOpts, PtpClock* ptpClock, TimeInternal* time
     switch(ptpClock->msgTmpHeader.messageType)
     {
     case ANNOUNCE:
-	handleAnnounce(&ptpClock->msgTmpHeader,
+		handleAnnounce(&ptpClock->msgTmpHeader,
 	           length, isFromSelf, rtOpts, ptpClock);
 	break;
     case SYNC:
-		if(rtOpts->transport != SCSI_FC) {
-			handleSync(&ptpClock->msgTmpHeader, 
-				length, timeStamp, isFromSelf, ptpClock->netPath.lastSourceAddr, ptpClock->netPath.lastDestAddr, rtOpts, ptpClock);
-		} else {
-			handleSyncSCSI(&ptpClock->msgTmpHeader, 
-				length, timeStamp, isFromSelf, ptpClock->SCSIPath.lastSourceAddr, ptpClock->SCSIPath.lastDestAddr, rtOpts, ptpClock);
-		}
+		handleSync(&ptpClock->msgTmpHeader, length, timeStamp, isFromSelf, 
+		rtOpts->transport != SCSI_FC? ptpClock->netPath.lastSourceAddr : ptpClock->SCSIPath.lastSourceAddr, 
+		rtOpts->transport != SCSI_FC? ptpClock->netPath.lastDestAddr : ptpClock->SCSIPath.lastDestAddr,
+		 rtOpts, ptpClock, rtOpts->transport);
 	break;
     case FOLLOW_UP:
 		handleFollowUp(&ptpClock->msgTmpHeader,
 				length, isFromSelf, rtOpts, ptpClock);
 	break;
     case DELAY_REQ:
-		if(rtOpts->transport != SCSI_FC)
-			handleDelayReq(&ptpClock->msgTmpHeader,
-					length, timeStamp, ptpClock->netPath.lastSourceAddr, isFromSelf, rtOpts, ptpClock);
-		else 
-			handleDelayReqSCSI(&ptpClock->msgTmpHeader,
-					length, timeStamp, ptpClock->SCSIPath.lastSourceAddr, isFromSelf, rtOpts, ptpClock);
+		// if(rtOpts->transport != SCSI_FC)
+			handleDelayReq(&ptpClock->msgTmpHeader,length, timeStamp,
+			 rtOpts->transport != SCSI_FC ? ptpClock->netPath.lastSourceAddr : ptpClock->SCSIPath.lastSourceAddr,
+			  isFromSelf, rtOpts, ptpClock, rtOpts->transport);
+		// else 
+			// handleDelayReqSCSI(&ptpClock->msgTmpHeader,
+			// 		length, timeStamp, ptpClock->SCSIPath.lastSourceAddr, isFromSelf, rtOpts, ptpClock);
 		break;
     case PDELAY_REQ:
-		if(rtOpts->transport != SCSI_FC)
-			handlePdelayReq(&ptpClock->msgTmpHeader,
-				length, timeStamp, ptpClock->netPath.lastSourceAddr, isFromSelf, rtOpts, ptpClock);
-		else 
-			handlePdelayReqSCSI(&ptpClock->msgTmpHeader,
-				length, timeStamp, ptpClock->SCSIPath.lastSourceAddr, isFromSelf, rtOpts, ptpClock);
+		// if(rtOpts->transport != SCSI_FC)
+			handlePdelayReq(&ptpClock->msgTmpHeader,length, timeStamp, 
+				rtOpts->transport != SCSI_FC?ptpClock->netPath.lastSourceAddr : ptpClock->SCSIPath.lastSourceAddr,
+				 isFromSelf, rtOpts, ptpClock);
+		// else 
+		// 	handlePdelayReqSCSI(&ptpClock->msgTmpHeader,
+		// 		length, timeStamp, ptpClock->SCSIPath.lastSourceAddr, isFromSelf, rtOpts, ptpClock);
 	break;  
     case DELAY_RESP:
 		handleDelayResp(&ptpClock->msgTmpHeader,
 		length, rtOpts, ptpClock);
 	break;
     case PDELAY_RESP:
-		if(rtOpts->transport != SCSI_FC)
-			handlePdelayResp(&ptpClock->msgTmpHeader,
-			timeStamp, length, isFromSelf, ptpClock->netPath.lastSourceAddr, ptpClock->netPath.lastDestAddr, rtOpts, ptpClock);
-		else 
-			handlePdelayRespSCSI(&ptpClock->msgTmpHeader,
-			timeStamp, length, isFromSelf, ptpClock->SCSIPath.lastSourceAddr, ptpClock->SCSIPath.lastDestAddr, rtOpts, ptpClock);
+		// if(rtOpts->transport != SCSI_FC)
+		handlePdelayResp(&ptpClock->msgTmpHeader,
+			timeStamp, length, isFromSelf, rtOpts->transport != SCSI_FC ?ptpClock->netPath.lastSourceAddr:ptpClock->SCSIPath.lastSourceAddr, 
+			rtOpts->transport != SCSI_FC ?ptpClock->netPath.lastDestAddr:ptpClock->SCSIPath.lastDestAddr, rtOpts, ptpClock);
+		// else 
+		// 	handlePdelayRespSCSI(&ptpClock->msgTmpHeader,
+		// 	timeStamp, length, isFromSelf, ptpClock->SCSIPath.lastSourceAddr, ptpClock->SCSIPath.lastDestAddr, rtOpts, ptpClock);
 		break;
     case PDELAY_RESP_FOLLOW_UP:
 		handlePdelayRespFollowUp(&ptpClock->msgTmpHeader, 
@@ -1436,12 +1435,13 @@ processMessage(const RunTimeOpts* rtOpts, PtpClock* ptpClock, TimeInternal* time
 			isFromSelf, rtOpts, ptpClock);
 	break;
     case SIGNALING:
-		if(rtOpts->transport != SCSI_FC)
+		// if(rtOpts->transport != SCSI_FC)
 			handleSignaling(&ptpClock->msgTmpHeader, isFromSelf,
-						ptpClock->netPath.lastSourceAddr, rtOpts, ptpClock);
-		else 
-			handleSignalingSCSI(&ptpClock->msgTmpHeader, isFromSelf,
-						ptpClock->SCSIPath.lastSourceAddr, rtOpts, ptpClock);
+			rtOpts->transport != SCSI_FC?ptpClock->netPath.lastSourceAddr:ptpClock->SCSIPath.lastSourceAddr
+						, rtOpts, ptpClock);
+		// else 
+		// 	handleSignalingSCSI(&ptpClock->msgTmpHeader, isFromSelf,
+		// 				ptpClock->SCSIPath.lastSourceAddr, rtOpts, ptpClock);
 	break;
     default:
 	DBG("handle: unrecognized message\n");
@@ -1613,9 +1613,9 @@ handleAnnounce(MsgHeader *header, ssize_t length,
 	//uincast
 	if(rtOpts->unicastNegotiation && rtOpts->ipMode == IPMODE_UNICAST) {
 
-		nodeTable = findUnicastGrants(&header->sourcePortIdentity, 0, 
+		nodeTable = findUnicastGrants(&header->sourcePortIdentity,  
 							ptpClock->unicastGrants, ptpClock->unicastGrantIndex, UNICAST_MAX_DESTINATIONS,
-							FALSE);
+							FALSE, rtOpts->transport, 0);
 		if(nodeTable == NULL || !(nodeTable->grantData[ANNOUNCE].granted)) {
 			DBG("Ignoring announce from master: unicast transmission not granted\n");
 			ptpClock->counters.discardedMessages++;
@@ -1726,7 +1726,10 @@ handleAnnounce(MsgHeader *header, ssize_t length,
 			}
 			
 			/* save the master address for display purposes or hybrid mode */
-			ptpClock->masterAddr = ptpClock->netPath.lastSourceAddr;
+			if(rtOpts->transport != SCSI_FC)
+				ptpClock->masterAddr = ptpClock->netPath.lastSourceAddr;
+			else 
+				ptpClock->masterAddrSCSI = ptpClock->SCSIPath.lastSourceAddr;
 
 			break;
 
@@ -1789,7 +1792,10 @@ handleAnnounce(MsgHeader *header, ssize_t length,
 			/* update datasets (file bmc.c) */
 			s1(header,&ptpClock->msgTmp.announce,ptpClock, rtOpts);
 
-			ptpClock->masterAddr = ptpClock->netPath.lastSourceAddr;
+			if(rtOpts->transport != SCSI_FC)
+				ptpClock->masterAddr = ptpClock->netPath.lastSourceAddr;
+			else 
+				ptpClock->masterAddrSCSI = ptpClock->SCSIPath.lastSourceAddr;
 
 			DBG("___ Announce: received Announce from current Master, so reset the Announce timer\n\n");
 
@@ -1832,188 +1838,14 @@ handleAnnounce(MsgHeader *header, ssize_t length,
 }
 
 static void 
-handleSyncSCSI(const MsgHeader *header, ssize_t length, 
-	   TimeInternal *tint, Boolean isFromSelf, uint64_t sourceAddress, uint64_t destinationAddress,
-	   const RunTimeOpts *rtOpts, PtpClock *ptpClock) 
-{
-	TimeInternal OriginTimestamp;
-	TimeInternal correctionField;
-
-	uint16_t dst = 0;
-
-	if(destinationAddress) {
-	    dst = destinationAddress;
-	} else {
-	    dst = 0;
-	}
-
-	DBGV("Sync message received : \n");
-
-	if (length < SYNC_LENGTH) {
-		DBG("Error: Sync message too short\n");
-		ptpClock->counters.messageFormatErrors++;
-		return;
-	}
-
-	switch (ptpClock->portState) {
-	case PTP_INITIALIZING:
-	case PTP_FAULTY:
-	case PTP_DISABLED:
-	case PTP_PASSIVE:
-	case PTP_LISTENING:
-		DBGV("HandleSync : disregard\n");
-		ptpClock->counters.discardedMessages++;
-		return;
-		
-	case PTP_UNCALIBRATED:
-	case PTP_SLAVE:
-		if (isFromSelf) {
-			DBGV("HandleSync: Ignore message from self \n");
-			return;
-		}
-
-		if (isFromCurrentParent(ptpClock, header)) {
-			ptpClock->counters.syncMessagesReceived++;
-			/* We only start our own delayReq timer after receiving the first sync */
-			if (ptpClock->syncWaiting) {
-				ptpClock->syncWaiting = FALSE;
-
-
-				NOTICE("Received first Sync from Master\n");
-
-				if (ptpClock->delayMechanism == E2E)
-					timerStart(&ptpClock->timers[DELAYREQ_INTERVAL_TIMER],
-						   pow(2,ptpClock->logMinDelayReqInterval));
-				else if (ptpClock->delayMechanism == P2P)
-					timerStart(&ptpClock->timers[PDELAYREQ_INTERVAL_TIMER],
-						   pow(2,ptpClock->logMinPdelayReqInterval));
-			} else if ( rtOpts->syncSequenceChecking ) {
-				if(  (ptpClock->counters.consecutiveSequenceErrors < MAX_SEQ_ERRORS) &&
-					((((UInteger16)(ptpClock->recvSyncSequenceId + 32768)) >
-					(header->sequenceId + 32767)) ||
-				    (((UInteger16)(ptpClock->recvSyncSequenceId + 1)) >
-					(header->sequenceId)))  )  {
-					ptpClock->counters.discardedMessages++;
-					ptpClock->counters.sequenceMismatchErrors++;
-					ptpClock->counters.consecutiveSequenceErrors++;
-					DBG("HandleSync : sequence mismatch - "
-					    "received: %d, expected %d or greater, consecutive errors %d\n",
-					    header->sequenceId,
-					    (UInteger16)(ptpClock->recvSyncSequenceId + 1),
-					    ptpClock->counters.consecutiveSequenceErrors
-					    );
-					break;
-			    } else {
-				    if(ptpClock->counters.consecutiveSequenceErrors >= MAX_SEQ_ERRORS) {
-					    DBG("HandleSync: rejected %d out of order sequences, accepting current sync\n",
-						    MAX_SEQ_ERRORS);
-				    }
-				    ptpClock->counters.consecutiveSequenceErrors = 0;
-			    }
-			}
-
-			ptpClock->logSyncInterval = header->logMessageInterval;			
-
-			recordSync(header->sequenceId, tint);
-
-			if ((header->flagField0 & PTP_TWO_STEP) == PTP_TWO_STEP) {
-				DBG2("HandleSync: waiting for follow-up \n");
-				ptpClock->twoStepFlag=TRUE;
-				if(ptpClock->waitingForFollow) {
-				    ptpClock->followUpGap++;
-				    if(ptpClock->followUpGap < MAX_FOLLOWUP_GAP) {
-					DBG("Received Sync while waiting for follow-up - "
-					    "will wait for another %d messages\n",
-					    MAX_FOLLOWUP_GAP - ptpClock->followUpGap);
-					    break;		    
-				    }
-					DBG("No follow-up for %d sync - waiting for new follow-up\n",
-					    ptpClock->followUpGap);
-				}
-
-				ptpClock->sync_receive_time.seconds = tint->seconds;
-				ptpClock->sync_receive_time.nanoseconds = tint->nanoseconds;
-
-				ptpClock->waitingForFollow = TRUE;
-				/*Save correctionField of Sync message*/
-				integer64_to_internalTime(
-					header->correctionField,
-					&correctionField);
-				ptpClock->lastSyncCorrectionField.seconds = 
-					correctionField.seconds;
-				ptpClock->lastSyncCorrectionField.nanoseconds =
-					correctionField.nanoseconds;
-				ptpClock->recvSyncSequenceId = 
-					header->sequenceId;
-				break;
-			} else {
-
-				ptpClock->sync_receive_time.seconds = tint->seconds;
-				ptpClock->sync_receive_time.nanoseconds = tint->nanoseconds;
-
-				ptpClock->recvSyncSequenceId = 
-					header->sequenceId;
-				msgUnpackSync(ptpClock->msgIbuf,
-					      &ptpClock->msgTmp.sync);
-				integer64_to_internalTime(
-					ptpClock->msgTmpHeader.correctionField,
-					&correctionField);
-				timeInternal_display(&correctionField);
-				ptpClock->waitingForFollow = FALSE;
-				toInternalTime(&OriginTimestamp,
-					       &ptpClock->msgTmp.sync.originTimestamp);
-				updateOffset(&OriginTimestamp,
-					     &ptpClock->sync_receive_time,
-					     &ptpClock->ofm_filt,rtOpts,
-					     ptpClock,&correctionField);
-				checkOffset(rtOpts,ptpClock);
-				if (ptpClock->clockControl.updateOK) {
-					ptpClock->acceptedUpdates++;
-					updateClock(rtOpts,ptpClock);
-				}
-				ptpClock->offsetUpdates++;
-				
-				ptpClock->twoStepFlag=FALSE;
-				break;
-			}
-		} else {
-			DBG("HandleSync: Sync message received from "
-			     "another Master not our own \n");
-			ptpClock->counters.discardedMessages++;
-		}
-		break;
-
-	case PTP_MASTER:
-	default :
-		if (!isFromSelf) {
-			DBGV("HandleSync: Sync message received from "
-			     "another Master  \n");
-			/* we are the master, but another is sending */
-			ptpClock->counters.discardedMessages++;
-			break;
-		} if (ptpClock->twoStepFlag) {
-			DBGV("HandleSync: going to send followup message\n");
-
-
-#ifndef PTPD_SLAVE_ONLY /* does not get compiled when building slave only */
-			processSyncFromSelfSCSI(tint, rtOpts, ptpClock, dst, header->sequenceId);
-#endif /* PTPD_SLAVE_ONLY */
-			break;
-		} else {
-			DBGV("HandleSync: Sync message received from self\n");
-		}
-	}
-}
-
-static void 
 handleSync(const MsgHeader *header, ssize_t length, 
-	   TimeInternal *tint, Boolean isFromSelf, Integer32 sourceAddress, Integer32 destinationAddress,
-	   const RunTimeOpts *rtOpts, PtpClock *ptpClock)
+	   TimeInternal *tint, Boolean isFromSelf, uint64_t sourceAddress, uint64_t destinationAddress,
+	   const RunTimeOpts *rtOpts, PtpClock *ptpClock, int type)
 {
 	TimeInternal OriginTimestamp;
 	TimeInternal correctionField;
 
-	Integer32 dst = 0;
+	uint64_t dst = 0;
 
 	if(destinationAddress) {
 	    dst = destinationAddress;
@@ -2031,11 +1863,11 @@ handleSync(const MsgHeader *header, ssize_t length,
 
 	if(!isFromSelf && rtOpts->unicastNegotiation && rtOpts->ipMode == IPMODE_UNICAST) {
 	    UnicastGrantTable *nodeTable = NULL;
-	    nodeTable = findUnicastGrants(&header->sourcePortIdentity, 0, 
+	    nodeTable = findUnicastGrants(&header->sourcePortIdentity,  
 			ptpClock->unicastGrants, ptpClock->unicastGrantIndex, UNICAST_MAX_DESTINATIONS,
-			FALSE);
+			FALSE, rtOpts->transport, 0);
 	    if(nodeTable != NULL) {
-		nodeTable->grantData[SYNC].receiving = header->sequenceId;
+			nodeTable->grantData[SYNC].receiving = header->sequenceId;
 	    }
 	}
 
@@ -2190,33 +2022,34 @@ handleSync(const MsgHeader *header, ssize_t length,
 				msgUnpackSync(ptpClock->msgIbuf,
 					      &ptpClock->msgTmp.sync);
 				toInternalTime(&OriginTimestamp, &ptpClock->msgTmp.sync.originTimestamp);
-			    dst = lookupSyncIndex(&OriginTimestamp, header->sequenceId, ptpClock->syncDestIndex);
+				
+				dst = lookupSyncIndex(&OriginTimestamp, header->sequenceId, ptpClock->syncDestIndex, rtOpts->transport);
 
 #ifdef RUNTIME_DEBUG
-			    {
-				struct in_addr tmpAddr;
-				tmpAddr.s_addr = dst;
-				DBG("handleSync: master sync dest cache hit: %s\n", inet_ntoa(tmpAddr));
-			    }
+			    // {
+				// struct in_addr tmpAddr;
+				// tmpAddr.s_addr = dst;
+				// DBG("handleSync: master sync dest cache hit: %s\n", inet_ntoa(tmpAddr));
+			    // }
 #endif /* RUNTIME_DEBUG */
 
 			    if(!dst) {
 				DBG("handleSync: master sync dest cache miss - searching\n");
-				dst = findSyncDestination(&OriginTimestamp, rtOpts, ptpClock);
-				/* give up. Better than sending FollowUp to random destinations*/
-				if(!dst) {
-				    DBG("handleSync: master sync dest not found for followUp. Giving up.\n");
-				    return;
-				} else {
-				    DBG("unicast destination found.\n");
-				}
+					dst = findSyncDestination(&OriginTimestamp, rtOpts, ptpClock, rtOpts->transport);
+					/* give up. Better than sending FollowUp to random destinations*/
+					if(!dst) {
+						DBG("handleSync: master sync dest not found for followUp. Giving up.\n");
+						return;
+					} else {
+						DBG("unicast destination found.\n");
+					}
 			    }
 
 			}
 
 
 #ifndef PTPD_SLAVE_ONLY /* does not get compiled when building slave only */
-			processSyncFromSelf(tint, rtOpts, ptpClock, dst, header->sequenceId);
+			processSyncFromSelf(tint, rtOpts, ptpClock, dst, header->sequenceId, rtOpts->transport);
 #endif /* PTPD_SLAVE_ONLY */
 			break;
 		} else {
@@ -2227,20 +2060,12 @@ handleSync(const MsgHeader *header, ssize_t length,
 
 #ifndef PTPD_SLAVE_ONLY /* does not get compiled when building slave only */
 static void
-processSyncFromSelf(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, Integer32 dst, const UInteger16 sequenceId) {
+processSyncFromSelf(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId, int type) {
 	TimeInternal timestamp;
 	/*Add latency*/
 	addTime(&timestamp, tint, &rtOpts->outboundLatency);
 	/* Issue follow-up CORRESPONDING TO THIS SYNC */
-	issueFollowup(&timestamp, rtOpts, ptpClock, dst, sequenceId);
-}
-static void
-processSyncFromSelfSCSI(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId) {
-	TimeInternal timestamp;
-	/*Add latency*/
-	addTime(&timestamp, tint, &rtOpts->outboundLatency);
-	/* Issue follow-up CORRESPONDING TO THIS SYNC */
-	issueFollowupSCSI(&timestamp, rtOpts, ptpClock, dst, sequenceId);
+	issueFollowup(&timestamp, rtOpts, ptpClock, dst, sequenceId, type);
 }
 #endif /* PTPD_SLAVE_ONLY */
 
@@ -2354,98 +2179,98 @@ handleFollowUp(const MsgHeader *header, ssize_t length,
 
 }
 
-void handleDelayReqSCSI(const MsgHeader *header, ssize_t length, 
-	       const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf,
-	       const RunTimeOpts *rtOpts, PtpClock *ptpClock) 
-{
-	if (ptpClock->delayMechanism == E2E) {
+// void handleDelayReqSCSI(const MsgHeader *header, ssize_t length, 
+// 	       const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf,
+// 	       const RunTimeOpts *rtOpts, PtpClock *ptpClock) 
+// {
+// 	if (ptpClock->delayMechanism == E2E) {
 
-		DBGV("delayReq message received : \n");
+// 		DBGV("delayReq message received : \n");
 		
-		if (length < DELAY_REQ_LENGTH) {
-			DBG("Error: DelayReq message too short\n");
-			ptpClock->counters.messageFormatErrors++;
-			return;
-		}
+// 		if (length < DELAY_REQ_LENGTH) {
+// 			DBG("Error: DelayReq message too short\n");
+// 			ptpClock->counters.messageFormatErrors++;
+// 			return;
+// 		}
 
-		switch (ptpClock->portState) {
-		case PTP_INITIALIZING:
-		case PTP_FAULTY:
-		case PTP_DISABLED:
-		case PTP_UNCALIBRATED:
-		case PTP_LISTENING:
-		case PTP_PASSIVE:
-			DBGV("HandledelayReq : disregard\n");
-			ptpClock->counters.discardedMessages++;
-			return;
+// 		switch (ptpClock->portState) {
+// 		case PTP_INITIALIZING:
+// 		case PTP_FAULTY:
+// 		case PTP_DISABLED:
+// 		case PTP_UNCALIBRATED:
+// 		case PTP_LISTENING:
+// 		case PTP_PASSIVE:
+// 			DBGV("HandledelayReq : disregard\n");
+// 			ptpClock->counters.discardedMessages++;
+// 			return;
 
-		case PTP_SLAVE:
-			if (isFromSelf)	{
-				DBG("==> Handle DelayReq (%d)\n",
-					 header->sequenceId);
-				if ( ((UInteger16)(header->sequenceId + 1)) !=
-					ptpClock->sentDelayReqSequenceId) {
-					DBG("HandledelayReq : sequence mismatch - "
-					    "last DelayReq sent: %d, received: %d\n",
-					    ptpClock->sentDelayReqSequenceId,
-					    header->sequenceId
-					    );
-					ptpClock->counters.discardedMessages++;
-					ptpClock->counters.sequenceMismatchErrors++;
-					break;
-				}
+// 		case PTP_SLAVE:
+// 			if (isFromSelf)	{
+// 				DBG("==> Handle DelayReq (%d)\n",
+// 					 header->sequenceId);
+// 				if ( ((UInteger16)(header->sequenceId + 1)) !=
+// 					ptpClock->sentDelayReqSequenceId) {
+// 					DBG("HandledelayReq : sequence mismatch - "
+// 					    "last DelayReq sent: %d, received: %d\n",
+// 					    ptpClock->sentDelayReqSequenceId,
+// 					    header->sequenceId
+// 					    );
+// 					ptpClock->counters.discardedMessages++;
+// 					ptpClock->counters.sequenceMismatchErrors++;
+// 					break;
+// 				}
 
-				/*
-				 * Get sending timestamp from IP stack
-				 * with SO_TIMESTAMP
-				 */
+// 				/*
+// 				 * Get sending timestamp from IP stack
+// 				 * with SO_TIMESTAMP
+// 				 */
 
-				/*
-				 *  Make sure we process the REQ
-				 *  _before_ the RESP. While we could
-				 *  do this by any order, (because
-				 *  it's implicitly indexed by
-				 *  (ptpClock->sentDelayReqSequenceId
-				 *  - 1), this is now made explicit
-				 */
-				processDelayReqFromSelf(tint, rtOpts, ptpClock);
+// 				/*
+// 				 *  Make sure we process the REQ
+// 				 *  _before_ the RESP. While we could
+// 				 *  do this by any order, (because
+// 				 *  it's implicitly indexed by
+// 				 *  (ptpClock->sentDelayReqSequenceId
+// 				 *  - 1), this is now made explicit
+// 				 */
+// 				processDelayReqFromSelf(tint, rtOpts, ptpClock);
 
-				break;
-			} else {
-				DBG2("HandledelayReq : disregard delayreq from other client\n");
-				ptpClock->counters.discardedMessages++;
-			}
-			break;
+// 				break;
+// 			} else {
+// 				DBG2("HandledelayReq : disregard delayreq from other client\n");
+// 				ptpClock->counters.discardedMessages++;
+// 			}
+// 			break;
 
-		case PTP_MASTER:
-			msgUnpackHeader(ptpClock->msgIbuf,
-					&ptpClock->delayReqHeader);
-			ptpClock->counters.delayReqMessagesReceived++;
+// 		case PTP_MASTER:
+// 			msgUnpackHeader(ptpClock->msgIbuf,
+// 					&ptpClock->delayReqHeader);
+// 			ptpClock->counters.delayReqMessagesReceived++;
 
-			issueDelayRespSCSI(tint,&ptpClock->delayReqHeader, sourceAddress,
-				       rtOpts,ptpClock);
-			break;
+// 			issueDelayRespSCSI(tint,&ptpClock->delayReqHeader, sourceAddress,
+// 				       rtOpts,ptpClock);
+// 			break;
 
-		default:
-			DBG("do unrecognized state2\n");
-			ptpClock->counters.discardedMessages++;
-			break;
-		}
-	} else if (ptpClock->delayMechanism == P2P) {/* (Peer to Peer mode) */
-		DBG("Delay messages are ignored in Peer to Peer mode\n");
-		ptpClock->counters.discardedMessages++;
-		ptpClock->counters.delayModeMismatchErrors++;
-	/* no delay mechanism */
-	} else {
-		DBG("DelayReq ignored - we are in DELAY_DISABLED mode");
-		ptpClock->counters.discardedMessages++;
-	}
-}
+// 		default:
+// 			DBG("do unrecognized state2\n");
+// 			ptpClock->counters.discardedMessages++;
+// 			break;
+// 		}
+// 	} else if (ptpClock->delayMechanism == P2P) {/* (Peer to Peer mode) */
+// 		DBG("Delay messages are ignored in Peer to Peer mode\n");
+// 		ptpClock->counters.discardedMessages++;
+// 		ptpClock->counters.delayModeMismatchErrors++;
+// 	/* no delay mechanism */
+// 	} else {
+// 		DBG("DelayReq ignored - we are in DELAY_DISABLED mode");
+// 		ptpClock->counters.discardedMessages++;
+// 	}
+// }
 
 void
 handleDelayReq(const MsgHeader *header, ssize_t length, 
-	       const TimeInternal *tint, Integer32 sourceAddress, Boolean isFromSelf,
-	       const RunTimeOpts *rtOpts, PtpClock *ptpClock)
+	       const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf,
+	       const RunTimeOpts *rtOpts, PtpClock *ptpClock, int type)
 {
 
 	UnicastGrantTable *nodeTable = NULL;
@@ -2453,9 +2278,9 @@ handleDelayReq(const MsgHeader *header, ssize_t length,
 	if (ptpClock->delayMechanism == E2E) {
 		//unicast
 		if(!isFromSelf && rtOpts->unicastNegotiation && rtOpts->ipMode == IPMODE_UNICAST) {
-		    nodeTable = findUnicastGrants(&header->sourcePortIdentity, 0,
+		    nodeTable = findUnicastGrants(&header->sourcePortIdentity,
 				ptpClock->unicastGrants, ptpClock->unicastGrantIndex, UNICAST_MAX_DESTINATIONS,
-				FALSE);
+				FALSE, rtOpts->transport, 0);
 		    if(nodeTable == NULL || !(nodeTable->grantData[DELAY_RESP].granted)) {
 			DBG("Ignoring Delay Request from slave: unicast transmission not granted\n");
 			ptpClock->counters.discardedMessages++;
@@ -2530,7 +2355,10 @@ handleDelayReq(const MsgHeader *header, ssize_t length,
 			ptpClock->counters.delayReqMessagesReceived++;
 
 			// remember IP address of this client for hybrid mode
-			ptpClock->LastSlaveAddr = ptpClock->netPath.lastSourceAddr;
+			if(rtOpts->transport != SCSI_FC)
+				ptpClock->LastSlaveAddr = ptpClock->netPath.lastSourceAddr;
+			else 
+				ptpClock->LastSlaveAddrSCSI = ptpClock->SCSIPath.lastSourceAddr;
 
 			issueDelayResp(tint,&ptpClock->delayReqHeader, sourceAddress,
 				       rtOpts,ptpClock);
@@ -2585,9 +2413,9 @@ handleDelayResp(const MsgHeader *header, ssize_t length,
 
 		if(rtOpts->unicastNegotiation && rtOpts->ipMode == IPMODE_UNICAST) {
 		    UnicastGrantTable *nodeTable = NULL;
-		    nodeTable = findUnicastGrants(&header->sourcePortIdentity, 0, 
+		    nodeTable = findUnicastGrants(&header->sourcePortIdentity, 
 				ptpClock->unicastGrants, ptpClock->unicastGrantIndex, UNICAST_MAX_DESTINATIONS,
-				FALSE);
+				FALSE, rtOpts->transport, 0);
 		    if(nodeTable != NULL) {
 			nodeTable->grantData[DELAY_RESP].receiving = header->sequenceId;
 		    }
@@ -2731,66 +2559,66 @@ handleDelayResp(const MsgHeader *header, ssize_t length,
 
 }
 
-static void 
-handlePdelayReqSCSI(MsgHeader *header, ssize_t length, 
-		const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf, 
-		const RunTimeOpts *rtOpts, PtpClock *ptpClock)
-{
-	if (ptpClock->delayMechanism == P2P) {
+// static void 
+// handlePdelayReqSCSI(MsgHeader *header, ssize_t length, 
+// 		const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf, 
+// 		const RunTimeOpts *rtOpts, PtpClock *ptpClock)
+// {
+// 	if (ptpClock->delayMechanism == P2P) {
 
-		DBGV("PdelayReq message received : \n");
+// 		DBGV("PdelayReq message received : \n");
 
-		if(length < PDELAY_REQ_LENGTH) {
-			DBG("Error: PdelayReq message too short\n");
-			ptpClock->counters.messageFormatErrors++;
-			return;
-		}
+// 		if(length < PDELAY_REQ_LENGTH) {
+// 			DBG("Error: PdelayReq message too short\n");
+// 			ptpClock->counters.messageFormatErrors++;
+// 			return;
+// 		}
 
-		switch (ptpClock->portState ) {
-		case PTP_INITIALIZING:
-		case PTP_FAULTY:
-		case PTP_DISABLED:
-		case PTP_UNCALIBRATED:
-		case PTP_LISTENING:
-			DBGV("HandlePdelayReq : disregard\n");
-			ptpClock->counters.discardedMessages++;
-			return;
+// 		switch (ptpClock->portState ) {
+// 		case PTP_INITIALIZING:
+// 		case PTP_FAULTY:
+// 		case PTP_DISABLED:
+// 		case PTP_UNCALIBRATED:
+// 		case PTP_LISTENING:
+// 			DBGV("HandlePdelayReq : disregard\n");
+// 			ptpClock->counters.discardedMessages++;
+// 			return;
 
-		case PTP_SLAVE:
-		case PTP_MASTER:
-		case PTP_PASSIVE:
+// 		case PTP_SLAVE:
+// 		case PTP_MASTER:
+// 		case PTP_PASSIVE:
 
-			if (isFromSelf) {
-				processPdelayReqFromSelf(tint, rtOpts, ptpClock);
-				break;
-			} else {
-				ptpClock->counters.pdelayReqMessagesReceived++;
-				msgUnpackHeader(ptpClock->msgIbuf,
-						&ptpClock->PdelayReqHeader);
-				issuePdelayRespSCSI(tint, header, sourceAddress, rtOpts,
-						ptpClock);	
-				break;
-			}
-		default:
-			DBG("do unrecognized state3\n");
-			ptpClock->counters.discardedMessages++;
-			break;
-		}
-	} else if (ptpClock->delayMechanism == E2E){/* (End to End mode..) */
-		DBG("Peer Delay messages are disregarded in End to End "
-		      "mode \n");
-		ptpClock->counters.discardedMessages++;
-		ptpClock->counters.delayModeMismatchErrors++;
-	/* no delay mechanism */
-	} else {
-		DBG("PdelayReq ignored - we are in DELAY_DISABLED mode");
-		ptpClock->counters.discardedMessages++;
-	}
-}
+// 			if (isFromSelf) {
+// 				processPdelayReqFromSelf(tint, rtOpts, ptpClock);
+// 				break;
+// 			} else {
+// 				ptpClock->counters.pdelayReqMessagesReceived++;
+// 				msgUnpackHeader(ptpClock->msgIbuf,
+// 						&ptpClock->PdelayReqHeader);
+// 				issuePdelayRespSCSI(tint, header, sourceAddress, rtOpts,
+// 						ptpClock);	
+// 				break;
+// 			}
+// 		default:
+// 			DBG("do unrecognized state3\n");
+// 			ptpClock->counters.discardedMessages++;
+// 			break;
+// 		}
+// 	} else if (ptpClock->delayMechanism == E2E){/* (End to End mode..) */
+// 		DBG("Peer Delay messages are disregarded in End to End "
+// 		      "mode \n");
+// 		ptpClock->counters.discardedMessages++;
+// 		ptpClock->counters.delayModeMismatchErrors++;
+// 	/* no delay mechanism */
+// 	} else {
+// 		DBG("PdelayReq ignored - we are in DELAY_DISABLED mode");
+// 		ptpClock->counters.discardedMessages++;
+// 	}
+// }
 
 static void
 handlePdelayReq(MsgHeader *header, ssize_t length, 
-		const TimeInternal *tint, Integer32 sourceAddress, Boolean isFromSelf, 
+		const TimeInternal *tint, uint64_t sourceAddress, Boolean isFromSelf, 
 		const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 {
 
@@ -2799,9 +2627,9 @@ handlePdelayReq(MsgHeader *header, ssize_t length,
 	if (ptpClock->delayMechanism == P2P) {
 
 		if(!isFromSelf && rtOpts->unicastNegotiation && rtOpts->ipMode == IPMODE_UNICAST) {
-		    nodeTable = findUnicastGrants(&header->sourcePortIdentity, 0, 
+		    nodeTable = findUnicastGrants(&header->sourcePortIdentity, 
 				ptpClock->unicastGrants, ptpClock->unicastGrantIndex, UNICAST_MAX_DESTINATIONS,
-				FALSE);
+				FALSE, rtOpts->transport, 0);
 		    if(nodeTable == NULL || !(nodeTable->grantData[PDELAY_RESP].granted)) {
 			DBG("Ignoring Peer Delay Request from peer: unicast transmission not granted\n");
 			ptpClock->counters.discardedMessages++;
@@ -2877,8 +2705,162 @@ processPdelayReqFromSelf(const TimeInternal * tint, const RunTimeOpts * rtOpts, 
 		&rtOpts->outboundLatency);
 }
 
+// static void
+// handlePdelayRespSCSI(const MsgHeader *header, TimeInternal *tint,
+// 		 ssize_t length, Boolean isFromSelf, uint64_t sourceAddress, uint64_t destinationAddress,
+// 		 const RunTimeOpts *rtOpts, PtpClock *ptpClock)
+// {
+// 	if (ptpClock->delayMechanism == P2P) {
+
+// 		uint64_t dst = 0;
+
+// 		if(destinationAddress) {
+// 			dst = destinationAddress;
+// 		    } else {
+// 			/* last resort: may cause PdelayRespFollowUp to be sent to incorrect destinations */
+// 			dst = ptpClock->lastPdelayRespDstSCSI;
+// 		    }
+
+
+// 		/* Boolean isFromCurrentParent = FALSE; NOTE: This is never used in this function */
+// 		TimeInternal requestReceiptTimestamp;
+// 		TimeInternal correctionField;
+	
+// 		DBG("PdelayResp message received : \n");
+
+// 		if (length < PDELAY_RESP_LENGTH) {
+// 			DBG("Error: PdelayResp message too short\n");
+// 			ptpClock->counters.messageFormatErrors++;
+// 			return;
+// 		}
+
+// 		switch (ptpClock->portState ) {
+// 		case PTP_INITIALIZING:
+// 		case PTP_FAULTY:
+// 		case PTP_DISABLED:
+// 		case PTP_UNCALIBRATED:
+// 		case PTP_LISTENING:
+// 			DBGV("HandlePdelayResp : disregard\n");
+// 			ptpClock->counters.discardedMessages++;
+// 			return;
+
+// 		case PTP_SLAVE:
+// 		case PTP_MASTER:
+// 			if (ptpClock->twoStepFlag && isFromSelf) {
+// 				processPdelayRespFromSelfSCSI(tint, rtOpts, ptpClock, dst, header->sequenceId);
+// 				break;
+// 			}
+// 			msgUnpackPdelayResp(ptpClock->msgIbuf,
+// 					    &ptpClock->msgTmp.presp);
+
+// 			if (ptpClock->sentPdelayReqSequenceId != 
+// 			       ((UInteger16)(header->sequenceId + 1))) {
+// 				    DBG("PdelayResp: sequence mismatch - sent: %d, received: %d\n",
+// 					    ptpClock->sentPdelayReqSequenceId,
+// 					    header->sequenceId);
+// 				    ptpClock->counters.discardedMessages++;
+// 				    ptpClock->counters.sequenceMismatchErrors++;
+// 				    break;
+// 			}
+// 			if ((!memcmp(ptpClock->portIdentity.clockIdentity,ptpClock->msgTmp.presp.requestingPortIdentity.clockIdentity,CLOCK_IDENTITY_LENGTH))
+// 				 && ( ptpClock->portIdentity.portNumber == ptpClock->msgTmp.presp.requestingPortIdentity.portNumber))	{
+// 				ptpClock->counters.pdelayRespMessagesReceived++;
+//                                 /* Two Step Clock */
+// 				if ((header->flagField0 & PTP_TWO_STEP) == PTP_TWO_STEP) {
+// 					/*Store t4 (Fig 35)*/
+// 					ptpClock->pdelay_resp_receive_time.seconds = tint->seconds;
+// 					ptpClock->pdelay_resp_receive_time.nanoseconds = tint->nanoseconds;
+// 					/*store t2 (Fig 35)*/
+// 					toInternalTime(&requestReceiptTimestamp,
+// 						       &ptpClock->msgTmp.presp.requestReceiptTimestamp);
+// 					ptpClock->pdelay_req_receive_time.seconds = requestReceiptTimestamp.seconds;
+// 					ptpClock->pdelay_req_receive_time.nanoseconds = requestReceiptTimestamp.nanoseconds;
+					
+// 					integer64_to_internalTime(header->correctionField,&correctionField);
+// 					ptpClock->lastPdelayRespCorrectionField.seconds = correctionField.seconds;
+// 					ptpClock->lastPdelayRespCorrectionField.nanoseconds = correctionField.nanoseconds;
+// 				} else {
+// 				/* One step Clock */
+// 					/*Store t4 (Fig 35)*/
+// 					ptpClock->pdelay_resp_receive_time.seconds = tint->seconds;
+// 					ptpClock->pdelay_resp_receive_time.nanoseconds = tint->nanoseconds;
+					
+// 					integer64_to_internalTime(header->correctionField,&correctionField);
+// 					updatePeerDelay (&ptpClock->owd_filt,rtOpts,ptpClock,&correctionField,FALSE);
+// 				if (rtOpts->ignore_delayreq_interval_master == 0) {
+// 					DBGV("current pdelay_req: %d  new pdelay req: %d \n",
+// 						ptpClock->logMinPdelayReqInterval,
+// 					header->logMessageInterval);
+//                         	    if (ptpClock->logMinPdelayReqInterval != header->logMessageInterval) {
+			
+//                     			if(header->logMessageInterval == UNICAST_MESSAGEINTERVAL &&
+// 						rtOpts->autoDelayReqInterval) {
+
+// 						if(rtOpts->unicastNegotiation && ptpClock->peerGrants.grantData[PDELAY_RESP].granted) {
+// 						    if(ptpClock->delayRespWaiting) {
+// 							    NOTICE("Received Peer Delay Interval %d from peer\n",
+// 							    ptpClock->peerGrants.grantData[PDELAY_RESP].logInterval);
+// 						    }
+// 						    ptpClock->logMinPdelayReqInterval = ptpClock->peerGrants.grantData[PDELAY_RESP].logInterval;
+// 						} else {
+
+// 						    if(ptpClock->delayRespWaiting) {
+// 							    NOTICE("Received Peer Delay Interval %d from peer (unicast-unknown) - overriding with %d\n",
+// 							    header->logMessageInterval, rtOpts->logMinPdelayReqInterval);
+// 						    }
+// 						    ptpClock->logMinPdelayReqInterval = rtOpts->logMinPdelayReqInterval;
+
+// 						}	
+// 					} else {
+// 						/* Accept new DelayReq value from the Master */
+
+// 						    NOTICE("Received new Peer Delay Request interval %d from Master (was: %d)\n",
+// 							     header->logMessageInterval, ptpClock->logMinPdelayReqInterval );
+
+// 						    // collect new value indicated by the Master
+// 						    ptpClock->logMinPdelayReqInterval = header->logMessageInterval;
+// 				    }
+// 				} else {
+
+// 					if (ptpClock->logMinPdelayReqInterval != rtOpts->logMinPdelayReqInterval) {
+// 						INFO("New Peer Delay Request interval applied: %d (was: %d)\n",
+// 							rtOpts->logMinPdelayReqInterval, ptpClock->logMinPdelayReqInterval);
+// 					}
+// 					ptpClock->logMinPdelayReqInterval = rtOpts->logMinPdelayReqInterval;
+// 				}
+				
+// 				}
+// 	                    		ptpClock->delayRespWaiting = FALSE;
+// 				}
+
+// 				ptpClock->recvPdelayRespSequenceId = header->sequenceId;
+// 				break;
+// 			} else {
+// 				DBG("HandlePdelayResp : Pdelayresp doesn't "
+// 				     "match with the PdelayReq. \n");
+// 				ptpClock->counters.discardedMessages++;
+// 				break;
+// 			}
+// 			break; /* XXX added by gnn for safety */
+// 		default:
+// 			DBG("do unrecognized state4\n");
+// 			ptpClock->counters.discardedMessages++;
+// 			break;
+// 		}
+// 	} else if (ptpClock->delayMechanism == E2E) { /* (End to End mode..) */
+// 		DBG("Peer Delay messages are disregarded in End to End "
+// 		      "mode \n");
+// 		ptpClock->counters.discardedMessages++;
+// 		ptpClock->counters.delayModeMismatchErrors++;
+// 	/* no delay mechanism */
+// 	} else {
+// 		DBG("PdelayResp ignored - we are in DELAY_DISABLED mode");
+// 		ptpClock->counters.discardedMessages++;
+// 	}
+// }
+
 static void
-handlePdelayRespSCSI(const MsgHeader *header, TimeInternal *tint,
+handlePdelayResp(const MsgHeader *header, TimeInternal *tint,
 		 ssize_t length, Boolean isFromSelf, uint64_t sourceAddress, uint64_t destinationAddress,
 		 const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 {
@@ -2890,161 +2872,7 @@ handlePdelayRespSCSI(const MsgHeader *header, TimeInternal *tint,
 			dst = destinationAddress;
 		    } else {
 			/* last resort: may cause PdelayRespFollowUp to be sent to incorrect destinations */
-			dst = ptpClock->lastPdelayRespDstSCSI;
-		    }
-
-
-		/* Boolean isFromCurrentParent = FALSE; NOTE: This is never used in this function */
-		TimeInternal requestReceiptTimestamp;
-		TimeInternal correctionField;
-	
-		DBG("PdelayResp message received : \n");
-
-		if (length < PDELAY_RESP_LENGTH) {
-			DBG("Error: PdelayResp message too short\n");
-			ptpClock->counters.messageFormatErrors++;
-			return;
-		}
-
-		switch (ptpClock->portState ) {
-		case PTP_INITIALIZING:
-		case PTP_FAULTY:
-		case PTP_DISABLED:
-		case PTP_UNCALIBRATED:
-		case PTP_LISTENING:
-			DBGV("HandlePdelayResp : disregard\n");
-			ptpClock->counters.discardedMessages++;
-			return;
-
-		case PTP_SLAVE:
-		case PTP_MASTER:
-			if (ptpClock->twoStepFlag && isFromSelf) {
-				processPdelayRespFromSelfSCSI(tint, rtOpts, ptpClock, dst, header->sequenceId);
-				break;
-			}
-			msgUnpackPdelayResp(ptpClock->msgIbuf,
-					    &ptpClock->msgTmp.presp);
-
-			if (ptpClock->sentPdelayReqSequenceId != 
-			       ((UInteger16)(header->sequenceId + 1))) {
-				    DBG("PdelayResp: sequence mismatch - sent: %d, received: %d\n",
-					    ptpClock->sentPdelayReqSequenceId,
-					    header->sequenceId);
-				    ptpClock->counters.discardedMessages++;
-				    ptpClock->counters.sequenceMismatchErrors++;
-				    break;
-			}
-			if ((!memcmp(ptpClock->portIdentity.clockIdentity,ptpClock->msgTmp.presp.requestingPortIdentity.clockIdentity,CLOCK_IDENTITY_LENGTH))
-				 && ( ptpClock->portIdentity.portNumber == ptpClock->msgTmp.presp.requestingPortIdentity.portNumber))	{
-				ptpClock->counters.pdelayRespMessagesReceived++;
-                                /* Two Step Clock */
-				if ((header->flagField0 & PTP_TWO_STEP) == PTP_TWO_STEP) {
-					/*Store t4 (Fig 35)*/
-					ptpClock->pdelay_resp_receive_time.seconds = tint->seconds;
-					ptpClock->pdelay_resp_receive_time.nanoseconds = tint->nanoseconds;
-					/*store t2 (Fig 35)*/
-					toInternalTime(&requestReceiptTimestamp,
-						       &ptpClock->msgTmp.presp.requestReceiptTimestamp);
-					ptpClock->pdelay_req_receive_time.seconds = requestReceiptTimestamp.seconds;
-					ptpClock->pdelay_req_receive_time.nanoseconds = requestReceiptTimestamp.nanoseconds;
-					
-					integer64_to_internalTime(header->correctionField,&correctionField);
-					ptpClock->lastPdelayRespCorrectionField.seconds = correctionField.seconds;
-					ptpClock->lastPdelayRespCorrectionField.nanoseconds = correctionField.nanoseconds;
-				} else {
-				/* One step Clock */
-					/*Store t4 (Fig 35)*/
-					ptpClock->pdelay_resp_receive_time.seconds = tint->seconds;
-					ptpClock->pdelay_resp_receive_time.nanoseconds = tint->nanoseconds;
-					
-					integer64_to_internalTime(header->correctionField,&correctionField);
-					updatePeerDelay (&ptpClock->owd_filt,rtOpts,ptpClock,&correctionField,FALSE);
-				if (rtOpts->ignore_delayreq_interval_master == 0) {
-					DBGV("current pdelay_req: %d  new pdelay req: %d \n",
-						ptpClock->logMinPdelayReqInterval,
-					header->logMessageInterval);
-                        	    if (ptpClock->logMinPdelayReqInterval != header->logMessageInterval) {
-			
-                    			if(header->logMessageInterval == UNICAST_MESSAGEINTERVAL &&
-						rtOpts->autoDelayReqInterval) {
-
-						if(rtOpts->unicastNegotiation && ptpClock->peerGrants.grantData[PDELAY_RESP].granted) {
-						    if(ptpClock->delayRespWaiting) {
-							    NOTICE("Received Peer Delay Interval %d from peer\n",
-							    ptpClock->peerGrants.grantData[PDELAY_RESP].logInterval);
-						    }
-						    ptpClock->logMinPdelayReqInterval = ptpClock->peerGrants.grantData[PDELAY_RESP].logInterval;
-						} else {
-
-						    if(ptpClock->delayRespWaiting) {
-							    NOTICE("Received Peer Delay Interval %d from peer (unicast-unknown) - overriding with %d\n",
-							    header->logMessageInterval, rtOpts->logMinPdelayReqInterval);
-						    }
-						    ptpClock->logMinPdelayReqInterval = rtOpts->logMinPdelayReqInterval;
-
-						}	
-					} else {
-						/* Accept new DelayReq value from the Master */
-
-						    NOTICE("Received new Peer Delay Request interval %d from Master (was: %d)\n",
-							     header->logMessageInterval, ptpClock->logMinPdelayReqInterval );
-
-						    // collect new value indicated by the Master
-						    ptpClock->logMinPdelayReqInterval = header->logMessageInterval;
-				    }
-				} else {
-
-					if (ptpClock->logMinPdelayReqInterval != rtOpts->logMinPdelayReqInterval) {
-						INFO("New Peer Delay Request interval applied: %d (was: %d)\n",
-							rtOpts->logMinPdelayReqInterval, ptpClock->logMinPdelayReqInterval);
-					}
-					ptpClock->logMinPdelayReqInterval = rtOpts->logMinPdelayReqInterval;
-				}
-				
-				}
-	                    		ptpClock->delayRespWaiting = FALSE;
-				}
-
-				ptpClock->recvPdelayRespSequenceId = header->sequenceId;
-				break;
-			} else {
-				DBG("HandlePdelayResp : Pdelayresp doesn't "
-				     "match with the PdelayReq. \n");
-				ptpClock->counters.discardedMessages++;
-				break;
-			}
-			break; /* XXX added by gnn for safety */
-		default:
-			DBG("do unrecognized state4\n");
-			ptpClock->counters.discardedMessages++;
-			break;
-		}
-	} else if (ptpClock->delayMechanism == E2E) { /* (End to End mode..) */
-		DBG("Peer Delay messages are disregarded in End to End "
-		      "mode \n");
-		ptpClock->counters.discardedMessages++;
-		ptpClock->counters.delayModeMismatchErrors++;
-	/* no delay mechanism */
-	} else {
-		DBG("PdelayResp ignored - we are in DELAY_DISABLED mode");
-		ptpClock->counters.discardedMessages++;
-	}
-}
-
-static void
-handlePdelayResp(const MsgHeader *header, TimeInternal *tint,
-		 ssize_t length, Boolean isFromSelf, Integer32 sourceAddress, Integer32 destinationAddress,
-		 const RunTimeOpts *rtOpts, PtpClock *ptpClock)
-{
-	if (ptpClock->delayMechanism == P2P) {
-
-		Integer32 dst = 0;
-
-		if(destinationAddress) {
-			dst = destinationAddress;
-		    } else {
-			/* last resort: may cause PdelayRespFollowUp to be sent to incorrect destinations */
-			dst = ptpClock->lastPdelayRespDst;
+			dst = (rtOpts->transport != SCSI_FC ?ptpClock->lastPdelayRespDst : ptpClock->lastPdelayRespDstSCSI);
 		    }
 
 
@@ -3186,19 +3014,19 @@ handlePdelayResp(const MsgHeader *header, TimeInternal *tint,
 }
 
 
-static void 
-processPdelayRespFromSelfSCSI(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId)
-{
-	TimeInternal timestamp;
+// static void 
+// processPdelayRespFromSelfSCSI(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId)
+// {
+// 	TimeInternal timestamp;
 	
-	addTime(&timestamp, tint, &rtOpts->outboundLatency);
+// 	addTime(&timestamp, tint, &rtOpts->outboundLatency);
 
-	issuePdelayRespFollowUpSCSI(&timestamp, &ptpClock->PdelayReqHeader, dst,
-		rtOpts, ptpClock, sequenceId);
-}
+// 	issuePdelayRespFollowUpSCSI(&timestamp, &ptpClock->PdelayReqHeader, dst,
+// 		rtOpts, ptpClock, sequenceId);
+// }
 
 static void 
-processPdelayRespFromSelf(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, Integer32 dst, const UInteger16 sequenceId)
+processPdelayRespFromSelf(const TimeInternal * tint, const RunTimeOpts * rtOpts, PtpClock * ptpClock, uint64_t dst, const UInteger16 sequenceId)
 {
 	TimeInternal timestamp;
 	
@@ -3622,24 +3450,32 @@ handleManagement(MsgHeader *header,
 	}
 
         /* If the management message we received was unicast, we also reply with unicast */
-        if((header->flagField0 & PTP_UNICAST) == PTP_UNICAST)
-                ptpClock->LastSlaveAddr = ptpClock->netPath.lastSourceAddr;
-        else ptpClock->LastSlaveAddr = 0;
+        if((header->flagField0 & PTP_UNICAST) == PTP_UNICAST) {
+            if(rtOpts->transport != SCSI_FC)
+				ptpClock->LastSlaveAddr = ptpClock->netPath.lastSourceAddr;
+			else 
+				ptpClock->LastSlaveAddrSCSI = ptpClock->SCSIPath.lastSourceAddr;
+		}else {
+			if(rtOpts->transport != SCSI_FC)
+				ptpClock->LastSlaveAddr = 0;
+			else 
+				ptpClock->LastSlaveAddrSCSI = 0;
+		}
 
 	/* send management message response or acknowledge */
 	if(ptpClock->outgoingManageTmp.tlv->tlvType == TLV_MANAGEMENT) {
 		if(ptpClock->outgoingManageTmp.actionField == RESPONSE ||
-				ptpClock->outgoingManageTmp.actionField == ACKNOWLEDGE) {
-			if(rtOpts->transport != SCSI_FC)
-				issueManagementRespOrAck(&ptpClock->outgoingManageTmp, rtOpts, ptpClock);
-			else if(rtOpts->transport == SCSI_FC)
-				issueManagementRespOrAckSCSI(&ptpClock->outgoingManageTmp, rtOpts, ptpClock);
+			ptpClock->outgoingManageTmp.actionField == ACKNOWLEDGE) {
+			// if(rtOpts->transport != SCSI_FC)
+			issueManagementRespOrAck(&ptpClock->outgoingManageTmp, rtOpts, ptpClock);
+			// else if(rtOpts->transport == SCSI_FC)
+				// issueManagementRespOrAckSCSI(&ptpClock->outgoingManageTmp, rtOpts, ptpClock);
 		}
 	} else if(ptpClock->outgoingManageTmp.tlv->tlvType == TLV_MANAGEMENT_ERROR_STATUS) {
-		if(rtOpts->transport != SCSI_FC)
+		// if(rtOpts->transport != SCSI_FC)
 			issueManagementErrorStatus(&ptpClock->outgoingManageTmp, rtOpts, ptpClock);
-		else 
-			issueManagementErrorStatusSCSI(&ptpClock->outgoingManageTmp, rtOpts, ptpClock);
+		// else 
+		// 	issueManagementErrorStatusSCSI(&ptpClock->outgoingManageTmp, rtOpts, ptpClock);
 	}
 
 	/* cleanup msgTmp managementTLV */
@@ -3656,17 +3492,17 @@ handleManagement(MsgHeader *header,
 static void 
 issueAnnounce(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 {
-	Integer32 dst = 0;
+	uint64_t dst = 0;
 	int i = 0;
 	UnicastGrantData *grant = NULL;
 	Boolean okToSend = TRUE;
 
 	/* send Announce to Ethernet or multicast */
 	if(rtOpts->transport == IEEE_802_3 || (rtOpts->ipMode != IPMODE_UNICAST)) {
-		if(rtOpts->transport != SCSI_FC)
+		// if(rtOpts->transport != SCSI_FC)
 			issueAnnounceSingle(dst, &ptpClock->sentAnnounceSequenceId, rtOpts, ptpClock);
-		else if(rtOpts->transport == SCSI_FC)
-			issueAnnounceSingleSCSI(0, &ptpClock->sentAnnounceSequenceId, rtOpts, ptpClock);
+		// else if(rtOpts->transport == SCSI_FC)
+			// issueAnnounceSingleSCSI(0, &ptpClock->sentAnnounceSequenceId, rtOpts, ptpClock);
 	/* send Announce to unicast destination(s) */
 	} else {
 	    /* send to granted only */
@@ -3683,7 +3519,10 @@ issueAnnounce(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 		    }
 		    if(grant->granted) {
 			if(okToSend) {
-			    issueAnnounceSingle(ptpClock->unicastGrants[i].transportAddress,
+			    issueAnnounceSingle(
+				rtOpts->transport != SCSI_FC?
+				ptpClock->unicastGrants[i].transportAddress:
+				ptpClock->unicastGrants[i].transportAddressSCSI,
 			    &grant->sentSeqId,rtOpts, ptpClock);
 			}
 		    }
@@ -3691,7 +3530,10 @@ issueAnnounce(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 	    /* send to fixed unicast destinations */
 	    } else {
 		for(i = 0; i < ptpClock->unicastDestinationCount; i++) {
-			issueAnnounceSingle(ptpClock->unicastDestinations[i].transportAddress,
+			issueAnnounceSingle(
+				rtOpts->transport != SCSI_FC ?
+				ptpClock->unicastDestinations[i].transportAddress :
+				ptpClock->unicastDestinations[i].transportAddressSCSI,
 			&(ptpClock->unicastGrants[i].grantData[ANNOUNCE].sentSeqId),
 						rtOpts, ptpClock);
 		    }
@@ -3700,32 +3542,38 @@ issueAnnounce(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 
 }
 
-static void 
-issueAnnounceSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock)
-{
-	msgPackAnnounce(ptpClock->msgObuf, *sequenceId,ptpClock);
+// static void 
+// issueAnnounceSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock)
+// {
+// 	msgPackAnnounce(ptpClock->msgObuf, *sequenceId,ptpClock);
 
-	if (!scsiSendGeneral(ptpClock->msgObuf,ANNOUNCE_LENGTH,
-			    &ptpClock->SCSIPath, rtOpts, dst)) {
-		    toState(PTP_FAULTY,rtOpts,ptpClock);
-		    ptpClock->counters.messageSendErrors++;
-		    DBGV("Announce message can't be sent -> FAULTY state \n");
-	} else {
-		    DBGV("Announce MSG sent ! \n");
-		    (*sequenceId)++;
-		    ptpClock->counters.announceMessagesSent++;
-	}
-}
+// 	if (!scsiSendGeneral(ptpClock->msgObuf,ANNOUNCE_LENGTH,
+// 			    &ptpClock->SCSIPath, rtOpts, dst)) {
+// 		    toState(PTP_FAULTY,rtOpts,ptpClock);
+// 		    ptpClock->counters.messageSendErrors++;
+// 		    DBGV("Announce message can't be sent -> FAULTY state \n");
+// 	} else {
+// 		    DBGV("Announce MSG sent ! \n");
+// 		    (*sequenceId)++;
+// 		    ptpClock->counters.announceMessagesSent++;
+// 	}
+// }
 
 /* send single announce to a single destination */
 static void 
-issueAnnounceSingle(Integer32 dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock)
+issueAnnounceSingle(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 {
-
+	Boolean res;
 	msgPackAnnounce(ptpClock->msgObuf, *sequenceId,ptpClock);
 
-	if (!netSendGeneral(ptpClock->msgObuf,ANNOUNCE_LENGTH,
-			    &ptpClock->netPath, rtOpts, dst)) {
+	if(rtOpts->transport != SCSI_FC) {
+		res = netSendGeneral(ptpClock->msgObuf,ANNOUNCE_LENGTH,
+			    &ptpClock->netPath, rtOpts, (Integer32)dst);
+	} else {
+		res = scsiSendGeneral(ptpClock->msgObuf,ANNOUNCE_LENGTH,
+			    &ptpClock->SCSIPath, rtOpts, dst);
+	}
+	if (!res) {
 		    toState(PTP_FAULTY,rtOpts,ptpClock);
 		    ptpClock->counters.messageSendErrors++;
 		    DBGV("Announce message can't be sent -> FAULTY state \n");
@@ -3740,24 +3588,27 @@ issueAnnounceSingle(Integer32 dst, UInteger16 *sequenceId, const RunTimeOpts *rt
 static void 
 issueSync(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 {
-	Integer32 dst = 0;
+	uint64_t dst = 0;
 	int i = 0;
 	UnicastGrantData *grant = NULL;
 	Boolean okToSend = TRUE;
 
 	/* send Sync to Ethernet or multicast */
 	if(rtOpts->transport == IEEE_802_3 || (rtOpts->ipMode != IPMODE_UNICAST)) {
-		if(rtOpts->transport != SCSI_FC)
-			(void)issueSyncSingle(dst, &ptpClock->sentSyncSequenceId, rtOpts, ptpClock);
-		else if (rtOpts->transport == SCSI_FC) {
-			(void)issueSyncSingleSCSI(0, &ptpClock->sentSyncSequenceId, rtOpts, ptpClock);
-		}
+		// if(rtOpts->transport != SCSI_FC)
+		issueSyncSingle(dst, &ptpClock->sentSyncSequenceId, rtOpts, ptpClock);
+		// else if (rtOpts->transport == SCSI_FC) {
+		// 	(void)issueSyncSingleSCSI(0, &ptpClock->sentSyncSequenceId, rtOpts, ptpClock);
+		// }
 	/* send Sync to unicast destination(s) */
 	} else {
 	    for(i = 0; i < UNICAST_MAX_DESTINATIONS; i++) {
-		ptpClock->syncDestIndex[i].transportAddress = 0;
-		clearTime(&ptpClock->unicastGrants[i].lastSyncTimestamp);
-		clearTime(&ptpClock->unicastDestinations[i].lastSyncTimestamp);
+			if(rtOpts->transport != SCSI_FC)
+				ptpClock->syncDestIndex[i].transportAddress = 0;
+			else 
+				ptpClock->syncDestIndex[i].transportAddressSCSI = 0;
+			clearTime(&ptpClock->unicastGrants[i].lastSyncTimestamp);
+			clearTime(&ptpClock->unicastDestinations[i].lastSyncTimestamp);
 	    }
 	    /* send to granted only */
 	    if(rtOpts->unicastNegotiation) {
@@ -3777,7 +3628,8 @@ issueSync(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 		    if(grant->granted) {
 			if(okToSend) {
 			    ptpClock->unicastGrants[i].lastSyncTimestamp =
-				issueSyncSingle(ptpClock->unicastGrants[i].transportAddress,
+				issueSyncSingle(
+				rtOpts->transport!=SCSI_FC?ptpClock->unicastGrants[i].transportAddress:ptpClock->unicastGrants[i].transportAddressSCSI,
 				&grant->sentSeqId,rtOpts, ptpClock);
 			}
 		    }
@@ -3786,7 +3638,7 @@ issueSync(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 	    } else {
 		for(i = 0; i < ptpClock->unicastDestinationCount; i++) {
 			ptpClock->unicastDestinations[i].lastSyncTimestamp =
-			    issueSyncSingle(ptpClock->unicastDestinations[i].transportAddress,
+			    issueSyncSingle(rtOpts->transport!=SCSI_FC?ptpClock->unicastGrants[i].transportAddress:ptpClock->unicastGrants[i].transportAddressSCSI,
 			    &(ptpClock->unicastGrants[i].grantData[SYNC].sentSeqId),
 						rtOpts, ptpClock);
 		    }
@@ -3795,75 +3647,76 @@ issueSync(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 
 }
 
-static TimeInternal
-issueSyncSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock)
-{
-	Timestamp originTimestamp;
-	TimeInternal internalTime, now;
+// static TimeInternal
+// issueSyncSingleSCSI(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock)
+// {
+// 	Timestamp originTimestamp;
+// 	TimeInternal internalTime, now;
 
-	getTime(&internalTime);
+// 	getTime(&internalTime);
 
-	if (respectUtcOffset(rtOpts, ptpClock) == TRUE) {
-		internalTime.seconds += ptpClock->timePropertiesDS.currentUtcOffset;
-	}
+// 	if (respectUtcOffset(rtOpts, ptpClock) == TRUE) {
+// 		internalTime.seconds += ptpClock->timePropertiesDS.currentUtcOffset;
+// 	}
 
-	/* 
-         * LEAPNOTE01#
-         * This is done here rather than in netSendEvent because we must also
-         * prevent sequence IDs from incrementing so that there's no discontinuity.
-         * Ideally netSendEvent should be incrementing the sequence numbers,
-         * then this could be centrally blocked, but then again this makes
-         * netSendEvent less generic - on the other end in 2.4 this will be 
-         * a glue function for libcck transports, so this will be fine.
-	 * In other words, ptpClock->netSendEvent() will be a function pointer.
-	 * What was I talking about? Yes, right, sequence numbers can be 
-         * incremented in netSendEvent.
-	 */
+// 	/* 
+//          * LEAPNOTE01#
+//          * This is done here rather than in netSendEvent because we must also
+//          * prevent sequence IDs from incrementing so that there's no discontinuity.
+//          * Ideally netSendEvent should be incrementing the sequence numbers,
+//          * then this could be centrally blocked, but then again this makes
+//          * netSendEvent less generic - on the other end in 2.4 this will be 
+//          * a glue function for libcck transports, so this will be fine.
+// 	 * In other words, ptpClock->netSendEvent() will be a function pointer.
+// 	 * What was I talking about? Yes, right, sequence numbers can be 
+//          * incremented in netSendEvent.
+// 	 */
 
-	if(ptpClock->leapSecondInProgress) {
-		DBG("Leap second in progress - will not send SYNC\n");
-		clearTime(&internalTime);
-		return internalTime;
-	}
+// 	if(ptpClock->leapSecondInProgress) {
+// 		DBG("Leap second in progress - will not send SYNC\n");
+// 		clearTime(&internalTime);
+// 		return internalTime;
+// 	}
 
-	fromInternalTime(&internalTime,&originTimestamp);
+// 	fromInternalTime(&internalTime,&originTimestamp);
 
-	now = internalTime;
+// 	now = internalTime;
 
-	msgPackSync(ptpClock->msgObuf,*sequenceId,&originTimestamp,ptpClock);
+// 	msgPackSync(ptpClock->msgObuf,*sequenceId,&originTimestamp,ptpClock);
 
-	if (!scsiSendEvent(ptpClock->msgObuf,SYNC_LENGTH,&ptpClock->SCSIPath,
-		rtOpts, dst, &internalTime)) {
-		toState(PTP_FAULTY,rtOpts,ptpClock);
-		ptpClock->counters.messageSendErrors++;
-		DBGV("Sync message can't be sent -> FAULTY state \n");
-	} else {
+// 	if (!scsiSendEvent(ptpClock->msgObuf,SYNC_LENGTH,&ptpClock->SCSIPath,
+// 		rtOpts, dst, &internalTime)) {
+// 		toState(PTP_FAULTY,rtOpts,ptpClock);
+// 		ptpClock->counters.messageSendErrors++;
+// 		DBGV("Sync message can't be sent -> FAULTY state \n");
+// 	} else {
 
-		DBGV("Sync MSG sent ! \n");
+// 		DBGV("Sync MSG sent ! \n");
 
-		ptpClock->lastSyncDstSCSI = dst;
+// 		ptpClock->lastSyncDstSCSI = dst;
 
-		if(!internalTime.seconds && !internalTime.nanoseconds) {
-		    internalTime = now;
-		}
+// 		if(!internalTime.seconds && !internalTime.nanoseconds) {
+// 		    internalTime = now;
+// 		}
 
-		/* index the Sync destination */
-		indexSyncSCSI(&internalTime, *sequenceId, dst, ptpClock->syncDestIndex);
+// 		/* index the Sync destination */
+// 		indexSyncSCSI(&internalTime, *sequenceId, dst, ptpClock->syncDestIndex);
 
-		(*sequenceId)++;
-		ptpClock->counters.syncMessagesSent++;
+// 		(*sequenceId)++;
+// 		ptpClock->counters.syncMessagesSent++;
 
-	}
+// 	}
 
-    return internalTime;
-}
+//     return internalTime;
+// }
 
 /*Pack and send a single Sync message, return the embedded timestamp*/
 static TimeInternal
-issueSyncSingle(Integer32 dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock)
+issueSyncSingle(uint64_t dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 {
 	Timestamp originTimestamp;
 	TimeInternal internalTime, now;
+	Boolean res;
 
 	getTime(&internalTime);
 
@@ -3896,8 +3749,15 @@ issueSyncSingle(Integer32 dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts
 
 	msgPackSync(ptpClock->msgObuf,*sequenceId,&originTimestamp,ptpClock);
 
-	if (!netSendEvent(ptpClock->msgObuf,SYNC_LENGTH,&ptpClock->netPath,
-		rtOpts, dst, &internalTime)) {
+	if(rtOpts->transport != SCSI_FC) {
+		res = netSendEvent(ptpClock->msgObuf,SYNC_LENGTH,&ptpClock->netPath,
+		rtOpts, (Integer32)dst, &internalTime);
+	} else {
+		res = scsiSendEvent(ptpClock->msgObuf,SYNC_LENGTH,&ptpClock->SCSIPath,
+		rtOpts, dst, &internalTime);
+	}
+	
+	if (!res) {
 		toState(PTP_FAULTY,rtOpts,ptpClock);
 		ptpClock->counters.messageSendErrors++;
 		DBGV("Sync message can't be sent -> FAULTY state \n");
@@ -3917,19 +3777,21 @@ issueSyncSingle(Integer32 dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts
 			    if (respectUtcOffset(rtOpts, ptpClock) == TRUE) {
 				    internalTime.seconds += ptpClock->timePropertiesDS.currentUtcOffset;
 			    }
-			    processSyncFromSelf(&internalTime, rtOpts, ptpClock, dst, *sequenceId);
+			    processSyncFromSelf(&internalTime, rtOpts, ptpClock, dst, *sequenceId, rtOpts->transport);
 			}
 		}
 #endif
-
-		ptpClock->lastSyncDst = dst;
+		if(rtOpts->transport != SCSI_FC)
+			ptpClock->lastSyncDst = (Integer32)dst;
+		else 
+			ptpClock->lastSyncDstSCSI = dst;
 
 		if(!internalTime.seconds && !internalTime.nanoseconds) {
 		    internalTime = now;
 		}
 
 		/* index the Sync destination */
-		indexSync(&internalTime, *sequenceId, dst, ptpClock->syncDestIndex);
+		indexSync(&internalTime, *sequenceId, dst, ptpClock->syncDestIndex, rtOpts);
 
 		(*sequenceId)++;
 		ptpClock->counters.syncMessagesSent++;
@@ -3943,43 +3805,35 @@ issueSyncSingle(Integer32 dst, UInteger16 *sequenceId, const RunTimeOpts *rtOpts
 
 /*Pack and send on general multicast ip adress a FollowUp message*/
 static void
-issueFollowup(const TimeInternal *tint,const RunTimeOpts *rtOpts,PtpClock *ptpClock, Integer32 dst, UInteger16 sequenceId)
+issueFollowup(const TimeInternal *tint,const RunTimeOpts *rtOpts,PtpClock *ptpClock, uint64_t dst, UInteger16 sequenceId, int type)
 {
 	Timestamp preciseOriginTimestamp;
 	fromInternalTime(tint,&preciseOriginTimestamp);
 	
 	msgPackFollowUp(ptpClock->msgObuf,&preciseOriginTimestamp,ptpClock,sequenceId);	
 
-	if (!netSendGeneral(ptpClock->msgObuf,FOLLOW_UP_LENGTH,
-			    &ptpClock->netPath, rtOpts, dst)) {
-		toState(PTP_FAULTY,rtOpts,ptpClock);
-		ptpClock->counters.messageSendErrors++;
-		DBGV("FollowUp message can't be sent -> FAULTY state \n");
+	if(type != SCSI_FC) {
+		if (!netSendGeneral(ptpClock->msgObuf,FOLLOW_UP_LENGTH,
+					&ptpClock->netPath, rtOpts, (Integer32)dst)) {
+			toState(PTP_FAULTY,rtOpts,ptpClock);
+			ptpClock->counters.messageSendErrors++;
+			DBGV("FollowUp message can't be sent -> FAULTY state \n");
+		} else {
+			DBGV("FollowUp MSG sent ! \n");
+			ptpClock->counters.followUpMessagesSent++;
+		}
 	} else {
-		DBGV("FollowUp MSG sent ! \n");
-		ptpClock->counters.followUpMessagesSent++;
+		if (!scsiSendGeneral(ptpClock->msgObuf,FOLLOW_UP_LENGTH,
+					&ptpClock->SCSIPath, rtOpts, dst)) {
+			toState(PTP_FAULTY,rtOpts,ptpClock);
+			ptpClock->counters.messageSendErrors++;
+			DBGV("FollowUp message can't be sent -> FAULTY state \n");
+		} else {
+			DBGV("FollowUp MSG sent ! \n");
+			ptpClock->counters.followUpMessagesSent++;
+		}
 	}
 }
-static void
-issueFollowupSCSI(const TimeInternal *tint,const RunTimeOpts *rtOpts,PtpClock *ptpClock, uint64_t dst, UInteger16 sequenceId)
-{
-	Timestamp preciseOriginTimestamp;
-	fromInternalTime(tint,&preciseOriginTimestamp);
-	
-	msgPackFollowUp(ptpClock->msgObuf,&preciseOriginTimestamp,ptpClock,sequenceId);	
-
-	if (!scsiSendGeneral(ptpClock->msgObuf,FOLLOW_UP_LENGTH,
-			    &ptpClock->SCSIPath, rtOpts, dst)) {
-		toState(PTP_FAULTY,rtOpts,ptpClock);
-		ptpClock->counters.messageSendErrors++;
-		DBGV("FollowUp message can't be sent -> FAULTY state \n");
-	} else {
-		DBGV("FollowUp MSG sent ! \n");
-		ptpClock->counters.followUpMessagesSent++;
-	}
-}
-
-
 #endif /* PTPD_SLAVE_ONLY */
 
 /*Pack and send on event multicast ip adress a DelayReq message*/
@@ -4012,21 +3866,25 @@ issueDelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 	// uses current sentDelayReqSequenceId
 	msgPackDelayReq(ptpClock->msgObuf,&originTimestamp,ptpClock);
 
-	Integer32 dst = 0;
+	uint64_t dst = 0;
 
 	  /* in hybrid mode  or unicast mode, send delayReq to current master */
         if (rtOpts->ipMode == IPMODE_HYBRID || rtOpts->ipMode == IPMODE_UNICAST) {
-    		dst = ptpClock->masterAddr;
+    		if(rtOpts->transport != SCSI_FC)
+				dst = ptpClock->masterAddr;
+			else 
+				dst = ptpClock->masterAddrSCSI;
         }
 
-	
-	if (rtOpts->transport != SCSI_FC && !netSendEvent(ptpClock->msgObuf,DELAY_REQ_LENGTH,
-			  &ptpClock->netPath, rtOpts, dst, &internalTime)) {
-		toState(PTP_FAULTY,rtOpts,ptpClock);
-		ptpClock->counters.messageSendErrors++;
-		DBGV("delayReq message can't be sent -> FAULTY state \n");
-	} else if(rtOpts->transport == SCSI_FC && !scsiSendEvent(ptpClock->msgObuf,DELAY_REQ_LENGTH,
-			  &ptpClock->SCSIPath, rtOpts, 0, &internalTime)) {
+	Boolean res;
+	if(rtOpts->transport != SCSI_FC) {
+		res = netSendEvent(ptpClock->msgObuf,DELAY_REQ_LENGTH,
+			  &ptpClock->netPath, rtOpts, (Integer32)dst, &internalTime);
+	} else {
+		res = scsiSendEvent(ptpClock->msgObuf,DELAY_REQ_LENGTH,
+			  &ptpClock->SCSIPath, rtOpts, dst, &internalTime);
+	}
+	if (!res) {
 		toState(PTP_FAULTY,rtOpts,ptpClock);
 		ptpClock->counters.messageSendErrors++;
 		DBGV("delayReq message can't be sent -> FAULTY state \n");
@@ -4074,9 +3932,10 @@ issueDelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 static void
 issuePdelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 {
-	Integer32 dst = 0;
+	uint64_t dst = 0;
 	Timestamp originTimestamp;
 	TimeInternal internalTime;
+	Boolean res;
 
 	/* see LEAPNOTE01# in this file */
 	if(ptpClock->leapSecondInProgress) {
@@ -4090,23 +3949,28 @@ issuePdelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 	}
 	fromInternalTime(&internalTime,&originTimestamp);
 
-	if(rtOpts->ipMode == IPMODE_UNICAST && ptpClock->unicastPeerDestination.transportAddress) {
+	if(rtOpts->ipMode == IPMODE_UNICAST && ptpClock->unicastPeerDestination.transportAddress && rtOpts->transport != SCSI_FC) {
 	    dst = ptpClock->unicastPeerDestination.transportAddress;
+	}
+
+	if(rtOpts->ipMode == IPMODE_UNICAST && ptpClock->unicastPeerDestination.transportAddressSCSI && rtOpts->transport == SCSI_FC) {
+		dst = ptpClock->unicastPeerDestination.transportAddressSCSI;
 	}
 	
 	msgPackPdelayReq(ptpClock->msgObuf,&originTimestamp,ptpClock);
-	if (rtOpts->transport != SCSI_FC && 
-	!netSendPeerEvent(ptpClock->msgObuf,PDELAY_REQ_LENGTH,
-			      &ptpClock->netPath, rtOpts, dst, &internalTime)) {
-		toState(PTP_FAULTY,rtOpts,ptpClock);
-		ptpClock->counters.messageSendErrors++;
-		DBGV("PdelayReq message can't be sent -> FAULTY state \n");
-	} else if (rtOpts->transport == SCSI_FC && scsiSendEvent(ptpClock->msgObuf,PDELAY_REQ_LENGTH,
-			      &ptpClock->SCSIPath, rtOpts, 0, &internalTime)) {
-		toState(PTP_FAULTY,rtOpts,ptpClock);
-		ptpClock->counters.messageSendErrors++;
-		DBGV("PdelayReq message can't be sent -> FAULTY state \n");
+	
+	if(rtOpts->transport != SCSI_FC) {
+		res = netSendPeerEvent(ptpClock->msgObuf,PDELAY_REQ_LENGTH,
+			      &ptpClock->netPath, rtOpts, (Integer32)dst, &internalTime);
+	} else {
+		res = scsiSendPeerEvent(ptpClock->msgObuf,PDELAY_REQ_LENGTH,
+			      &ptpClock->SCSIPath, rtOpts, dst, &internalTime);
 	}
+	if (!res) {
+		toState(PTP_FAULTY,rtOpts,ptpClock);
+		ptpClock->counters.messageSendErrors++;
+		DBGV("PdelayReq message can't be sent -> FAULTY state \n");
+	} 
 	else {
 		DBGV("PdelayReq MSG sent ! \n");
 		
@@ -4129,73 +3993,73 @@ issuePdelayReq(const RunTimeOpts *rtOpts,PtpClock *ptpClock)
 	}
 }
 
-static void
-issueDelayRespSCSI(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,
-		PtpClock *ptpClock)
-{
-	Timestamp requestReceiptTimestamp;
-	TimeInternal internalTime;
-	uint64_t dst = 0;
+// static void
+// issueDelayRespSCSI(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,
+// 		PtpClock *ptpClock)
+// {
+// 	Timestamp requestReceiptTimestamp;
+// 	TimeInternal internalTime;
+// 	uint64_t dst = 0;
 
-	if(ptpClock->leapSecondInProgress) {
-		DBG("Leap second in progress - will not send PDELAY_RESP\n");
-		return;
-	}
+// 	if(ptpClock->leapSecondInProgress) {
+// 		DBG("Leap second in progress - will not send PDELAY_RESP\n");
+// 		return;
+// 	}
 
-	fromInternalTime(tint,&requestReceiptTimestamp);
-	msgPackPdelayResp(ptpClock->msgObuf,header,
-			  &requestReceiptTimestamp,ptpClock);
-	if (!scsiSendPeerEvent(ptpClock->msgObuf,PDELAY_RESP_LENGTH,
-			      &ptpClock->SCSIPath, rtOpts, dst, &internalTime)) {
-		toState(PTP_FAULTY,rtOpts,ptpClock);
-		ptpClock->counters.messageSendErrors++;
-		DBGV("PdelayResp message can't be sent -> FAULTY state \n");
-	} else {
-		DBGV("PdelayResp MSG sent ! \n");
-	}
+// 	fromInternalTime(tint,&requestReceiptTimestamp);
+// 	msgPackPdelayResp(ptpClock->msgObuf,header,
+// 			  &requestReceiptTimestamp,ptpClock);
+// 	if (!scsiSendPeerEvent(ptpClock->msgObuf,PDELAY_RESP_LENGTH,
+// 			      &ptpClock->SCSIPath, rtOpts, dst, &internalTime)) {
+// 		toState(PTP_FAULTY,rtOpts,ptpClock);
+// 		ptpClock->counters.messageSendErrors++;
+// 		DBGV("PdelayResp message can't be sent -> FAULTY state \n");
+// 	} else {
+// 		DBGV("PdelayResp MSG sent ! \n");
+// 	}
 
-	ptpClock->counters.pdelayRespMessagesSent++;
-	ptpClock->lastPdelayRespDstSCSI = dst;
-}
+// 	ptpClock->counters.pdelayRespMessagesSent++;
+// 	ptpClock->lastPdelayRespDstSCSI = dst;
+// }
 
-static void
-issuePdelayRespSCSI(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,
-		PtpClock *ptpClock)
-{
-	Timestamp requestReceiptTimestamp;
-	TimeInternal internalTime;
+// static void
+// issuePdelayRespSCSI(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,
+// 		PtpClock *ptpClock)
+// {
+// 	Timestamp requestReceiptTimestamp;
+// 	TimeInternal internalTime;
 
-	uint64_t dst = 0;
-	if(ptpClock->leapSecondInProgress) {
-		DBG("Leap second in progress - will not send PDELAY_RESP\n");
-		return;
-	}
-	fromInternalTime(tint,&requestReceiptTimestamp);
-	msgPackPdelayResp(ptpClock->msgObuf,header,
-			  &requestReceiptTimestamp,ptpClock);
-	if(!scsiSendPeerEvent(ptpClock->msgObuf,PDELAY_RESP_LENGTH,
-			      &ptpClock->SCSIPath, rtOpts, dst, &internalTime))
-	{
-		toState(PTP_FAULTY,rtOpts,ptpClock);
-		ptpClock->counters.messageSendErrors++;
-		DBGV("PdelayResp message can't be sent -> FAULTY state \n");
-	} else {
-		DBGV("PdelayResp MSG sent ! \n");
-		ptpClock->counters.pdelayRespMessagesSent++;
-		ptpClock->lastPdelayRespDstSCSI = dst;
-	}
-}
+// 	uint64_t dst = 0;
+// 	if(ptpClock->leapSecondInProgress) {
+// 		DBG("Leap second in progress - will not send PDELAY_RESP\n");
+// 		return;
+// 	}
+// 	fromInternalTime(tint,&requestReceiptTimestamp);
+// 	msgPackPdelayResp(ptpClock->msgObuf,header,
+// 			  &requestReceiptTimestamp,ptpClock);
+// 	if(!scsiSendPeerEvent(ptpClock->msgObuf,PDELAY_RESP_LENGTH,
+// 			      &ptpClock->SCSIPath, rtOpts, dst, &internalTime))
+// 	{
+// 		toState(PTP_FAULTY,rtOpts,ptpClock);
+// 		ptpClock->counters.messageSendErrors++;
+// 		DBGV("PdelayResp message can't be sent -> FAULTY state \n");
+// 	} else {
+// 		DBGV("PdelayResp MSG sent ! \n");
+// 		ptpClock->counters.pdelayRespMessagesSent++;
+// 		ptpClock->lastPdelayRespDstSCSI = dst;
+// 	}
+// }
 
 /*Pack and send on event multicast ip adress a PdelayResp message*/
 static void
-issuePdelayResp(const TimeInternal *tint,MsgHeader *header, Integer32 sourceAddress, const RunTimeOpts *rtOpts,
+issuePdelayResp(const TimeInternal *tint,MsgHeader *header, uint64_t sourceAddress, const RunTimeOpts *rtOpts,
 		PtpClock *ptpClock)
 {
 	
 	Timestamp requestReceiptTimestamp;
 	TimeInternal internalTime;
-
-	Integer32 dst = 0;
+	Boolean res;
+	uint64_t dst = 0;
 
 	/* see LEAPNOTE01# in this file */
 	if(ptpClock->leapSecondInProgress) {
@@ -4213,8 +4077,15 @@ issuePdelayResp(const TimeInternal *tint,MsgHeader *header, Integer32 sourceAddr
 	msgPackPdelayResp(ptpClock->msgObuf,header,
 			  &requestReceiptTimestamp,ptpClock);
 
-	if (!netSendPeerEvent(ptpClock->msgObuf,PDELAY_RESP_LENGTH,
-			      &ptpClock->netPath, rtOpts, dst, &internalTime)) {
+	if(rtOpts->transport != SCSI_FC) {
+		res = netSendPeerEvent(ptpClock->msgObuf,PDELAY_RESP_LENGTH,
+			      &ptpClock->netPath, rtOpts, dst, &internalTime);
+	} else {
+		res = scsiSendPeerEvent(ptpClock->msgObuf,PDELAY_RESP_LENGTH,
+			      &ptpClock->SCSIPath, rtOpts, dst, &internalTime);
+	}
+
+	if (!res) {
 		toState(PTP_FAULTY,rtOpts,ptpClock);
 		ptpClock->counters.messageSendErrors++;
 		DBGV("PdelayResp message can't be sent -> FAULTY state \n");
@@ -4236,21 +4107,24 @@ issuePdelayResp(const TimeInternal *tint,MsgHeader *header, Integer32 sourceAddr
 #endif
 		
 		ptpClock->counters.pdelayRespMessagesSent++;
-		ptpClock->lastPdelayRespDst = dst;
+		if(rtOpts->transport != SCSI_FC)
+			ptpClock->lastPdelayRespDst = dst;
+		else 
+			ptpClock->lastPdelayRespDstSCSI = dst;
 	}
 }
 
 
 /*Pack and send a DelayResp message on event socket*/
 static void
-issueDelayResp(const TimeInternal *tint,MsgHeader *header,Integer32 sourceAddress, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
+issueDelayResp(const TimeInternal *tint,MsgHeader *header,uint64_t sourceAddress, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 {
 	Timestamp requestReceiptTimestamp;
 	fromInternalTime(tint,&requestReceiptTimestamp);
 	msgPackDelayResp(ptpClock->msgObuf,header,&requestReceiptTimestamp,
 			 ptpClock);
 
-	Integer32 dst = 0;
+	uint64_t dst = 0;
 
 	/* if request was unicast and we're running unicast, reply to source */
 	if ( (rtOpts->ipMode != IPMODE_MULTICAST) &&
@@ -4258,19 +4132,31 @@ issueDelayResp(const TimeInternal *tint,MsgHeader *header,Integer32 sourceAddres
 		dst = sourceAddress;
 	}
 
-	if (!netSendGeneral(ptpClock->msgObuf, DELAY_RESP_LENGTH,
-			    &ptpClock->netPath, rtOpts, dst)) {
-		toState(PTP_FAULTY,rtOpts,ptpClock);
-		ptpClock->counters.messageSendErrors++;
-		DBGV("delayResp message can't be sent -> FAULTY state \n");
+	if(rtOpts->transport != SCSI_FC) {
+		if (!netSendGeneral(ptpClock->msgObuf, DELAY_RESP_LENGTH,
+					&ptpClock->netPath, rtOpts, (Integer32)dst)) {
+			toState(PTP_FAULTY,rtOpts,ptpClock);
+			ptpClock->counters.messageSendErrors++;
+			DBGV("delayResp message can't be sent -> FAULTY state \n");
+		} else {
+			DBGV("PdelayResp MSG sent ! \n");
+			ptpClock->counters.delayRespMessagesSent++;
+		}
 	} else {
-		DBGV("PdelayResp MSG sent ! \n");
-		ptpClock->counters.delayRespMessagesSent++;
+		if (!scsiSendGeneral(ptpClock->msgObuf, DELAY_RESP_LENGTH,
+			    &ptpClock->SCSIPath, rtOpts, dst)) {
+			toState(PTP_FAULTY,rtOpts,ptpClock);
+			ptpClock->counters.messageSendErrors++;
+			DBGV("delayResp message can't be sent -> FAULTY state \n");
+		} else {
+			DBGV("PdelayResp MSG sent ! \n");
+			ptpClock->counters.delayRespMessagesSent++;
+		}
 	}
 }
 
 static void
-issuePdelayRespFollowUp(const TimeInternal *tint, MsgHeader *header, Integer32 dst,
+issuePdelayRespFollowUp(const TimeInternal *tint, MsgHeader *header, uint64_t dst,
 			     const RunTimeOpts *rtOpts, PtpClock *ptpClock, const UInteger16 sequenceId)
 {
 	Timestamp responseOriginTimestamp;
@@ -4278,38 +4164,51 @@ issuePdelayRespFollowUp(const TimeInternal *tint, MsgHeader *header, Integer32 d
 
 	msgPackPdelayRespFollowUp(ptpClock->msgObuf,header,
 				  &responseOriginTimestamp,ptpClock, sequenceId);
-	if (!netSendPeerGeneral(ptpClock->msgObuf,
-				PDELAY_RESP_FOLLOW_UP_LENGTH,
-				&ptpClock->netPath, rtOpts, dst)) {
-		toState(PTP_FAULTY,rtOpts,ptpClock);
-		ptpClock->counters.messageSendErrors++;
-		DBGV("PdelayRespFollowUp message can't be sent -> FAULTY state \n");
+	if(rtOpts->transport != SCSI_FC) {
+		if (!netSendPeerGeneral(ptpClock->msgObuf,
+					PDELAY_RESP_FOLLOW_UP_LENGTH,
+					&ptpClock->netPath, rtOpts, (Integer32)dst)) {
+			toState(PTP_FAULTY,rtOpts,ptpClock);
+			ptpClock->counters.messageSendErrors++;
+			DBGV("PdelayRespFollowUp message can't be sent -> FAULTY state \n");
+		} else {
+			DBGV("PdelayRespFollowUp MSG sent ! \n");
+			ptpClock->counters.pdelayRespFollowUpMessagesSent++;
+		}
 	} else {
-		DBGV("PdelayRespFollowUp MSG sent ! \n");
-		ptpClock->counters.pdelayRespFollowUpMessagesSent++;
+		if (!scsiSendPeerGeneral(ptpClock->msgObuf,
+					PDELAY_RESP_FOLLOW_UP_LENGTH,
+					&ptpClock->SCSIPath, rtOpts, dst)) {
+			toState(PTP_FAULTY,rtOpts,ptpClock);
+			ptpClock->counters.messageSendErrors++;
+			DBGV("PdelayRespFollowUp message can't be sent -> FAULTY state \n");
+		} else {
+			DBGV("PdelayRespFollowUp MSG sent ! \n");
+			ptpClock->counters.pdelayRespFollowUpMessagesSent++;
+		}
 	}
 }
 
-static void
-issuePdelayRespFollowUpSCSI(const TimeInternal *tint, MsgHeader *header, uint64_t dst,
-			     const RunTimeOpts *rtOpts, PtpClock *ptpClock, const UInteger16 sequenceId)
-{
-	Timestamp responseOriginTimestamp;
-	fromInternalTime(tint,&responseOriginTimestamp);
+// static void
+// issuePdelayRespFollowUpSCSI(const TimeInternal *tint, MsgHeader *header, uint64_t dst,
+// 			     const RunTimeOpts *rtOpts, PtpClock *ptpClock, const UInteger16 sequenceId)
+// {
+// 	Timestamp responseOriginTimestamp;
+// 	fromInternalTime(tint,&responseOriginTimestamp);
 
-	msgPackPdelayRespFollowUp(ptpClock->msgObuf,header,
-				  &responseOriginTimestamp,ptpClock, sequenceId);
-	if (!scsiSendPeerGeneral(ptpClock->msgObuf,
-				PDELAY_RESP_FOLLOW_UP_LENGTH,
-				&ptpClock->SCSIPath, rtOpts, dst)) {
-		toState(PTP_FAULTY,rtOpts,ptpClock);
-		ptpClock->counters.messageSendErrors++;
-		DBGV("PdelayRespFollowUp message can't be sent -> FAULTY state \n");
-	} else {
-		DBGV("PdelayRespFollowUp MSG sent ! \n");
-		ptpClock->counters.pdelayRespFollowUpMessagesSent++;
-	}
-}
+// 	msgPackPdelayRespFollowUp(ptpClock->msgObuf,header,
+// 				  &responseOriginTimestamp,ptpClock, sequenceId);
+// 	if (!scsiSendPeerGeneral(ptpClock->msgObuf,
+// 				PDELAY_RESP_FOLLOW_UP_LENGTH,
+// 				&ptpClock->SCSIPath, rtOpts, dst)) {
+// 		toState(PTP_FAULTY,rtOpts,ptpClock);
+// 		ptpClock->counters.messageSendErrors++;
+// 		DBGV("PdelayRespFollowUp message can't be sent -> FAULTY state \n");
+// 	} else {
+// 		DBGV("PdelayRespFollowUp MSG sent ! \n");
+// 		ptpClock->counters.pdelayRespFollowUpMessagesSent++;
+// 	}
+// }
 
 #if 0
 static void 
@@ -4326,7 +4225,7 @@ static void
 issueManagementRespOrAck(MsgManagement *outgoing, const RunTimeOpts *rtOpts,
 		PtpClock *ptpClock)
 {
-	Integer32 dst = 0;
+	uint64_t dst = 0;
 
 	/* pack ManagementTLV */
 	msgPackManagementTLV( ptpClock->msgObuf, outgoing, ptpClock);
@@ -4339,82 +4238,67 @@ issueManagementRespOrAck(MsgManagement *outgoing, const RunTimeOpts *rtOpts,
 	msgPackManagement( ptpClock->msgObuf, outgoing, ptpClock);
 
 	/* If LastSlaveAddr was populated, we reply via Unicast */
-	if (ptpClock->LastSlaveAddr > 0)
+	if (ptpClock->LastSlaveAddr > 0 && rtOpts->transport != SCSI_FC)
 		dst = ptpClock->LastSlaveAddr;
+	else if(ptpClock->LastSlaveAddrSCSI > 0 && rtOpts->transport == SCSI_FC)
+		dst = ptpClock->LastSlaveAddrSCSI;
 
-	if(!netSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
-			   &ptpClock->netPath, rtOpts, dst)) {
-		DBGV("Management response/acknowledge can't be sent -> FAULTY state \n");
-		ptpClock->counters.messageSendErrors++;
-		toState(PTP_FAULTY, rtOpts, ptpClock);
+	if(rtOpts->transport != SCSI_FC) {
+		if(!netSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
+				&ptpClock->netPath, rtOpts, dst)) {
+			DBGV("Management response/acknowledge can't be sent -> FAULTY state \n");
+			ptpClock->counters.messageSendErrors++;
+			toState(PTP_FAULTY, rtOpts, ptpClock);
+		} else {
+			DBGV("Management response/acknowledge msg sent \n");
+			ptpClock->counters.managementMessagesSent++;
+		}
 	} else {
-		DBGV("Management response/acknowledge msg sent \n");
-		ptpClock->counters.managementMessagesSent++;
+		if(!scsiSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
+				&ptpClock->SCSIPath, rtOpts, dst)) {
+			DBGV("Management response/acknowledge can't be sent -> FAULTY state \n");
+			ptpClock->counters.messageSendErrors++;
+			toState(PTP_FAULTY, rtOpts, ptpClock);
+		} else {
+			DBGV("Management response/acknowledge msg sent \n");
+			ptpClock->counters.managementMessagesSent++;
+		}
 	}
 }
 
-static void 
-issueManagementRespOrAckSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpts,
-		PtpClock *ptpClock)
-{
-	uint64_t dst = 0;
+// static void 
+// issueManagementRespOrAckSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpts,
+// 		PtpClock *ptpClock)
+// {
+// 	uint64_t dst = 0;
 
-	/* pack ManagementTLV */
-	msgPackManagementTLV( ptpClock->msgObuf, outgoing, ptpClock);
+// 	/* pack ManagementTLV */
+// 	msgPackManagementTLV( ptpClock->msgObuf, outgoing, ptpClock);
 
-	/* set header messageLength, the outgoing->tlv->lengthField is now valid */
-	outgoing->header.messageLength = MANAGEMENT_LENGTH +
-					TL_LENGTH +
-					outgoing->tlv->lengthField;
+// 	/* set header messageLength, the outgoing->tlv->lengthField is now valid */
+// 	outgoing->header.messageLength = MANAGEMENT_LENGTH +
+// 					TL_LENGTH +
+// 					outgoing->tlv->lengthField;
 
-	msgPackManagement( ptpClock->msgObuf, outgoing, ptpClock);
+// 	msgPackManagement( ptpClock->msgObuf, outgoing, ptpClock);
 
 
-	if(!scsiSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
-			   &ptpClock->SCSIPath, rtOpts, dst)) {
-		DBGV("Management response/acknowledge can't be sent -> FAULTY state \n");
-		ptpClock->counters.messageSendErrors++;
-		toState(PTP_FAULTY, rtOpts, ptpClock);
-	} else {
-		DBGV("Management response/acknowledge msg sent \n");
-		ptpClock->counters.managementMessagesSent++;
-	}
-}
+// 	if(!scsiSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
+// 			   &ptpClock->SCSIPath, rtOpts, dst)) {
+// 		DBGV("Management response/acknowledge can't be sent -> FAULTY state \n");
+// 		ptpClock->counters.messageSendErrors++;
+// 		toState(PTP_FAULTY, rtOpts, ptpClock);
+// 	} else {
+// 		DBGV("Management response/acknowledge msg sent \n");
+// 		ptpClock->counters.managementMessagesSent++;
+// 	}
+// }
 
 static void
 issueManagementErrorStatus(MsgManagement *outgoing, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
 {
-	Integer32 dst = 0;
-
-	/* pack ManagementErrorStatusTLV */
-	msgPackManagementErrorStatusTLV( ptpClock->msgObuf, outgoing, ptpClock);
-
-	/* set header messageLength, the outgoing->tlv->lengthField is now valid */
-	outgoing->header.messageLength = MANAGEMENT_LENGTH +
-					TL_LENGTH +
-					outgoing->tlv->lengthField;
-
-	msgPackManagement( ptpClock->msgObuf, outgoing, ptpClock);
-
-	if (ptpClock->LastSlaveAddr > 0)
-		dst = ptpClock->LastSlaveAddr;
-
-	if(!netSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
-			   &ptpClock->netPath, rtOpts, dst)) {
-		DBGV("Management error status can't be sent -> FAULTY state \n");
-		ptpClock->counters.messageSendErrors++;
-		toState(PTP_FAULTY, rtOpts, ptpClock);
-	} else {
-		DBGV("Management error status msg sent \n");
-		ptpClock->counters.managementMessagesSent++;
-	}
-
-}
-
-static void
-issueManagementErrorStatusSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
-{
 	uint64_t dst = 0;
+	int res;
 
 	/* pack ManagementErrorStatusTLV */
 	msgPackManagementErrorStatusTLV( ptpClock->msgObuf, outgoing, ptpClock);
@@ -4426,17 +4310,56 @@ issueManagementErrorStatusSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpt
 
 	msgPackManagement( ptpClock->msgObuf, outgoing, ptpClock);
 
-	if(!scsiSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
-			   &ptpClock->SCSIPath, rtOpts, dst)) {
-		DBGV("Management error status can't be sent -> FAULTY state \n");
-		ptpClock->counters.messageSendErrors++;
-		toState(PTP_FAULTY, rtOpts, ptpClock);
+	if (ptpClock->LastSlaveAddr > 0 && rtOpts->transport != SCSI_FC)
+		dst = ptpClock->LastSlaveAddr;
+	else if(ptpClock->LastSlaveAddrSCSI > 0 && rtOpts->transport == SCSI_FC)
+		dst = ptpClock->LastSlaveAddrSCSI;
+	
+	if(rtOpts->transport != SCSI_FC) {
+		res = netSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
+				&ptpClock->netPath, rtOpts, (Integer32)dst);
 	} else {
+		res = scsiSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
+				&ptpClock->SCSIPath, rtOpts, dst);
+	}
+
+	if(!res) {
+		DBGV("Management error status can't be sent -> FAULTY state \n");
+			ptpClock->counters.messageSendErrors++;
+			toState(PTP_FAULTY, rtOpts, ptpClock);
+	}
+	else  {
 		DBGV("Management error status msg sent \n");
 		ptpClock->counters.managementMessagesSent++;
 	}
-
 }
+
+// static void
+// issueManagementErrorStatusSCSI(MsgManagement *outgoing, const RunTimeOpts *rtOpts, PtpClock *ptpClock)
+// {
+// 	uint64_t dst = 0;
+
+// 	/* pack ManagementErrorStatusTLV */
+// 	msgPackManagementErrorStatusTLV( ptpClock->msgObuf, outgoing, ptpClock);
+
+// 	/* set header messageLength, the outgoing->tlv->lengthField is now valid */
+// 	outgoing->header.messageLength = MANAGEMENT_LENGTH +
+// 					TL_LENGTH +
+// 					outgoing->tlv->lengthField;
+
+// 	msgPackManagement( ptpClock->msgObuf, outgoing, ptpClock);
+
+// 	if(!scsiSendGeneral(ptpClock->msgObuf, outgoing->header.messageLength,
+// 			   &ptpClock->SCSIPath, rtOpts, dst)) {
+// 		DBGV("Management error status can't be sent -> FAULTY state \n");
+// 		ptpClock->counters.messageSendErrors++;
+// 		toState(PTP_FAULTY, rtOpts, ptpClock);
+// 	} else {
+// 		DBGV("Management error status msg sent \n");
+// 		ptpClock->counters.managementMessagesSent++;
+// 	}
+
+// }
 
 void
 addForeign(Octet *buf,MsgHeader *header,PtpClock *ptpClock, UInteger8 localPreference)

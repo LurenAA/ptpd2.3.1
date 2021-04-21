@@ -347,12 +347,12 @@ void handleErrorManagementMessage(MsgManagement *incoming, MsgManagement *outgoi
 /**
  * \brief Signaling message support
  */
-UnicastGrantTable* findUnicastGrants(const PortIdentity* portIdentity, Integer32 TransportAddress, UnicastGrantTable *grantTable, UnicastGrantTable **index, int nodeCount, Boolean update);
+UnicastGrantTable* findUnicastGrants(const PortIdentity* portIdentity, UnicastGrantTable *grantTable, UnicastGrantTable **index, int nodeCount, Boolean update, int type, uint64_t transportAddress);
 void 	initUnicastGrantTable(UnicastGrantTable *grantTable, Enumeration8 delayMechanism, int nodeCount, UnicastDestination *destinations, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
-void 	handleSMRequestUnicastTransmission(MsgSignaling*, MsgSignaling*, Integer32, const RunTimeOpts*, PtpClock*);
-Boolean handleSMCancelUnicastTransmission(MsgSignaling*, MsgSignaling*, Integer32, PtpClock*);
-void 	handleSMAcknowledgeCancelUnicastTransmission(MsgSignaling*, Integer32, PtpClock*);
-void 	handleSMGrantUnicastTransmission(MsgSignaling*, Integer32 , UnicastGrantTable*, int, PtpClock*);
+void 	handleSMRequestUnicastTransmission(MsgSignaling*, MsgSignaling*, uint64_t, const RunTimeOpts*, PtpClock*);
+Boolean handleSMCancelUnicastTransmission(MsgSignaling*, MsgSignaling*, uint64_t, PtpClock*,const RunTimeOpts *rtOpts);
+void 	handleSMAcknowledgeCancelUnicastTransmission(MsgSignaling*, uint64_t, PtpClock*,const RunTimeOpts *rtOpts);
+void 	handleSMGrantUnicastTransmission(MsgSignaling*, uint64_t , UnicastGrantTable*, int, PtpClock*,const RunTimeOpts *rtOpts);
 Boolean prepareSMRequestUnicastTransmission(MsgSignaling*,UnicastGrantData*,PtpClock*);
 Boolean prepareSMCancelUnicastTransmission(MsgSignaling*,UnicastGrantData*,PtpClock*);
 
@@ -361,8 +361,8 @@ void 	cancelUnicastTransmission(UnicastGrantData*, const RunTimeOpts*, PtpClock*
 void 	cancelNodeGrants(UnicastGrantTable *nodeTable, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
 void 	cancelAllGrants(UnicastGrantTable *grantTable, int nodeCount, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
 
-void 	issueSignaling(MsgSignaling *outgoing, Integer32 destination, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
-void 	handleSignaling(MsgHeader*, Boolean, Integer32, const RunTimeOpts*,PtpClock*);
+void 	issueSignaling(MsgSignaling *outgoing, uint64_t destination, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
+void 	handleSignaling(MsgHeader*, Boolean, uint64_t, const RunTimeOpts*,PtpClock*);
 
 void 	refreshUnicastGrants(UnicastGrantTable *grantTable, int nodeCount, const RunTimeOpts *rtOpts, PtpClock *ptpClock);
 void 	updateUnicastGrantTable(UnicastGrantTable *grantTable, int nodeCount, const RunTimeOpts *rtOpts);
