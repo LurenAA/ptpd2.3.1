@@ -154,7 +154,7 @@ indexSync(TimeInternal *timeStamp, UInteger16 sequenceId, uint64_t transportAddr
 			DBG("indexSync: hash collision - clearing entry %s:%04x\n", inet_ntoa(tmpAddr), hash);
 			index[hash].transportAddressSCSI = 0;
 		} else {
-			DBG("indexSync: indexed successfully %s:%04x\n", inet_ntoa(tmpAddr), hash);
+			DBG("indexSync: indexed successfully 0x%lx:%04x\n", transportAddress, hash);
 			index[hash].transportAddressSCSI = transportAddress;
 		}
 	}
@@ -339,10 +339,9 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 			    refreshUnicastGrants(ptpClock->unicastGrants, 
 				UNICAST_MAX_DESTINATIONS, rtOpts, ptpClock);
 			}
-			if(ptpClock->unicastPeerDestination.transportAddress) {
+			if(ptpClock->unicastPeerDestination.transportAddress || ptpClock->unicastPeerDestination.transportAddressSCSI) {
 			    refreshUnicastGrants(&ptpClock->peerGrants, 
 				1, rtOpts, ptpClock);
-
 			}
 		}
 

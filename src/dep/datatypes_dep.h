@@ -244,6 +244,7 @@ typedef struct {
     //自己的属性
     SCSIInterfaceInfo info;
 
+    Boolean fd_rwlock_init;
     pthread_rwlock_t fd_rwlock; 
     SCSIEnd** valid_end_array;
     int valid_end_array_length;
@@ -275,6 +276,7 @@ typedef struct {
     struct scst_user_dev_desc desc; //注册信息
     // struct vdisk_tgt_dev tgt_devs[64]; //连接的主机数
 
+    Boolean recv_mutex_init;
     pthread_mutex_t recv_mutex; //mutex
     SCSIREC* recv_event_head;
     int recv_event_length;

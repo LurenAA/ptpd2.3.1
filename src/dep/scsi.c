@@ -722,10 +722,12 @@ Boolean scsiShutdown(SCSIPath* scsi) {
     // res = pthread_join(scsi->receive_scsi_back_thread, NULL);
     // if(res) 
     //     RAISE(PTHREAD_JOIN_ERROR);
-
-    res = pthread_mutex_destroy(&scsi->recv_mutex);
-    if(res) 
-        RAISE(PTHREAD_MUTEX_DESTROY_ERROR);
+    if(scsi->recv_mutex_init) {
+        res = pthread_mutex_destroy(&scsi->recv_mutex);
+        if(res) 
+            RAISE(PTHREAD_MUTEX_DESTROY_ERROR);
+        scsi->recv_mutex_init = FALSE;
+    }
 
     recv_ptr = scsi->recv_event_head;
     while(recv_ptr != NULL) {
@@ -745,10 +747,13 @@ Boolean scsiShutdown(SCSIPath* scsi) {
     if(scsi->invalid_end_array)
         freeEndArray(scsi->invalid_end_array, scsi->invalid_end_array_length, scsi->invalid_end_array_capacity);
 
-    res = pthread_rwlock_destroy(&scsi->fd_rwlock);
-    if(res)
-        RAISE(PTHREAD_RWLOCK_DESTROY_ERROR);
-    
+    if(scsi->fd_rwlock_init) {
+        res = pthread_rwlock_destroy(&scsi->fd_rwlock);
+        if(res)
+            RAISE(PTHREAD_RWLOCK_DESTROY_ERROR);
+        scsi->fd_rwlock_init = FALSE;
+    }
+
     memset(scsi, 0, sizeof(* scsi));
     return TRUE;
 }
@@ -2015,7 +2020,7 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     res = pthread_mutexattr_init(&attr);
     if(res) 
         RAISE(PTHREAD_MUTEX_ATTR_INIT_ERROR);
-
+    
 #ifdef DPTPD_DBG
     res =  pthread_mutexattr_settype(&attr,PTHREAD_MUTEX_ERRORCHECK );
     if(res) {
@@ -2026,10 +2031,12 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     res = pthread_rwlock_init(&scsi->fd_rwlock, NULL);
     if(res)
         RAISE(PTHREAD_RWLOCK_INIT_ERROR);
+    scsi->fd_rwlock_init = TRUE;
 
     res = pthread_mutex_init(&scsi->recv_mutex, &attr);
     if(res) 
         RAISE(PTHREAD_MUTEX_INIT_ERROR);
+    scsi->recv_mutex_init = TRUE;
 
     res = pthread_mutexattr_destroy(&attr);
     if(res) 
@@ -2288,6 +2295,11 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
     res = clock_gettime(CLOCK_REALTIME, &ntime);
+    if(res == -1) {
+        res = errno;
+        DBG("%s\n", STRERROR(res));
+        RAISE(GENER_ERROR);
+    }
     if(destinationAddress) {
         *(char *)(buf + 6) |= PTP_UNICAST;
         int fd = findValidFd(scsi, destinationAddress);
