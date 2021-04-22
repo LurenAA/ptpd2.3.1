@@ -281,7 +281,7 @@ AUTOMAKE = ${SHELL} /home/xgb/ptpd-ptpd.2.3.1/build-aux/missing automake-1.16
 AWK = mawk
 CC = gcc
 CCDEPMODE = depmode=gcc3
-CFLAGS = -g -O2 -ggdb -O0 -DSDEBUG -g -D__USE_GNU \
+CFLAGS = -g -ggdb -O0 -DSDEBUG -g -D__USE_GNU \
 	-I$(SCST_ITF_VER_DIR) -D_GNU_SOURCE -D__USE_FILE_OFFSET64 \
 	-D__USE_LARGEFILE64 -pthread -DPTPD_DBG -DRUNTIME_DEBUG
 CPP = gcc -E

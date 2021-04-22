@@ -1,6 +1,7 @@
 #include "../ptpd.h"
 #include <unistd.h>
 #include <string.h>
+#include <pthread.h>
 #ifdef SDEBUG
 static const char * scsi_opcode_string[] = {
     "TEST_UNIT_READY      ",
@@ -207,6 +208,30 @@ static int readSCSI(SCSIPath* scsi, int fd, sg_io_hdr_t* io);
 vdisk_tgt_dev* findtgtDev(SCSIPath* scsi, TGT_TYPE type, uint64_t x);
 vdisk_tgt_dev* createNewTgtDev(SCSIPath* scsi);
 void setTgtValue(vdisk_tgt_dev* dsk, TGT_TYPE type, ...);
+
+// static 
+// int setPthreadCancelState(int state) {
+//     int res, oldState;
+//     res = pthread_setcancelstate(state, &oldState);
+//     if(res) {
+//         res = errno;
+//         DBG("%s\n", STRERROR(res));
+//         abort();
+//     }
+//     return oldState;
+// }
+
+// static 
+// int setPthreadCancelType(int type) {
+//     int res, oldType;
+//     res = pthread_setcanceltype(type, &oldType);
+//     if(res) {
+//         res = errno;
+//         DBG("%s\n", STRERROR(res));
+//         abort();
+//     }
+//     return oldType;
+// }
 
 static void cleanUpWRLock(void* arg) {
     assert(arg);
@@ -664,11 +689,17 @@ Boolean scsiShutdown(SCSIPath* scsi) {
     SCSIREC* recv_ptr, *recv_ptr_h;
     assert(scsi);
     
-    if(scsi->scst_usr_fd) {
-        if(-1 == close(scsi->scst_usr_fd))
-            RAISE(CLOSE_ERROR);
+    if(scsi->end_refresh_thread) {
+        res = pthread_cancel(scsi->end_refresh_thread);
+        if(res && res != ESRCH)
+            RAISE(PTHREAD_CANCEL_ERROR);
+        res = pthread_join(scsi->end_refresh_thread, NULL);
+        if(res) {
+            DBG("pthread_join end_refresh_thread error: %s\n", STRERROR(res));
+            RAISE(PTHREAD_JOIN_ERROR);
+        }
     }
-    
+
     for(i = 0; i < SCST_THREAD; ++i) {
         if(scsi->scst_thread[i]) {
             res = pthread_cancel(scsi->scst_thread[i]);
@@ -680,16 +711,6 @@ Boolean scsiShutdown(SCSIPath* scsi) {
             }
         }
     }
-    if(scsi->end_refresh_thread) {
-        res = pthread_cancel(scsi->end_refresh_thread);
-        if(res && res != ESRCH)
-            RAISE(PTHREAD_CANCEL_ERROR);
-    }
-    
-    // res = pthread_cancel(scsi->receive_scsi_back_thread);
-    // if(res && res != ESRCH) 
-    //     RAISE(PTHREAD_CANCEL_ERROR);
-
     for(i = 0; i < SCST_THREAD; ++i) {
         if(scsi->scst_thread[i]) {
             res = pthread_join(scsi->scst_thread[i], NULL);
@@ -698,14 +719,16 @@ Boolean scsiShutdown(SCSIPath* scsi) {
             }
         }
     }
-
-    if(scsi->end_refresh_thread) {
-        res = pthread_join(scsi->end_refresh_thread, NULL);
-        if(res) {
-            DBG("pthread_join end_refresh_thread error: %s\n", STRERROR(res));
-            RAISE(PTHREAD_JOIN_ERROR);
-        }
+    
+    if(scsi->scst_usr_fd) {
+        if(-1 == close(scsi->scst_usr_fd))
+            RAISE(CLOSE_ERROR);
     }
+
+    // res = pthread_cancel(scsi->receive_scsi_back_thread);
+    // if(res && res != ESRCH) 
+    //     RAISE(PTHREAD_CANCEL_ERROR);
+
     
     if(scsi->sess_array_capacity > 0) {
         if(scsi->sess_array_length > 0) {
@@ -1719,6 +1742,20 @@ void* main_loop(void* arg) {
     res = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
     if(res == -1) RAISE(SIG_MASK_ERROR);
 
+    // int oldState = setPthreadCancelState(PTHREAD_CANCEL_ENABLE);
+    // if(oldState == PTHREAD_CANCEL_ENABLE) {
+    //     DBG("a");
+    // } else {
+    //     DBG("b");
+    // }
+    // int oldType = setPthreadCancelType(PTHREAD_CANCEL_DEFERRED);
+    // if(oldType == PTHREAD_CANCEL_DEFERRED) {
+    //     DBG("C");
+    // } else {
+    //     DBG("d");
+    // }
+
+
     memset(&pl, 0, sizeof(pl));
     pl.fd = scsi->scst_usr_fd;
     pl.events = POLLIN;
@@ -1764,12 +1801,13 @@ void* main_loop(void* arg) {
                     continue;
             }
 again_poll:
-            res = poll(&pl, 1, -1);
+            res = poll(&pl, 1, 100);
             if(res > 0)
                 continue;
-            else if(res == 0)
+            else if(res == 0) {
                 goto again_poll;
-            else {
+
+            }else {
                 res = errno;
                 if(res != EINTR)
                     DBG("main_loop poll:%s\n", STRERROR(res));
@@ -1948,6 +1986,7 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     int j = 0, i = 0;
     pthread_mutexattr_t attr;
     int res = 0;
+    int retryTime = 0;
 
     if(rtOpts->unicastDestinationsSet) {
         if(strlen(rtOpts->unicastDestinations) > 0) {
@@ -1986,6 +2025,7 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     if(scsi->scst_usr_fd == -1) {
         if(errno == ENOENT) {
             system(SHELLSCRIPT);
+            usleep(10 * 1000);
             scsi->scst_usr_fd = open(SCST_USER_DEV, O_RDWR | O_NONBLOCK);
             if(scsi->scst_usr_fd == -1) 
                 RAISE(OPEN_ERROR);
@@ -2013,15 +2053,22 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
 	scsi->desc.opt.queue_alg = SCST_QUEUE_ALG_1_UNRESTRICTED_REORDER;
 	scsi->desc.opt.qerr = SCST_QERR_0_ALL_RESUME;
 	scsi->desc.opt.d_sense = SCST_D_SENSE_0_FIXED_SENSE;
-    res = ioctl(scsi->scst_usr_fd, SCST_USER_REGISTER_DEVICE, &scsi->desc);
-    if(res != 0) 
+
+    do {
+        res = ioctl(scsi->scst_usr_fd, SCST_USER_REGISTER_DEVICE, &scsi->desc);
+        if(!res) 
+            break;
+        ++retryTime;
+        sleep(5);
+    } while(retryTime < 5);
+    if(retryTime >= 5) 
         RAISE(SCST_USER_REGISTER_DEVICE_ERROR);
-    
+
     res = pthread_mutexattr_init(&attr);
     if(res) 
         RAISE(PTHREAD_MUTEX_ATTR_INIT_ERROR);
     
-#ifdef DPTPD_DBG
+#ifdef PTPD_DBG
     res =  pthread_mutexattr_settype(&attr,PTHREAD_MUTEX_ERRORCHECK );
     if(res) {
         res = errno;
@@ -2059,6 +2106,7 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
     if(res) 
         RAISE(PTHREAD_CREATE_ERROR);
     
+
     // res = pthread_create(&scsi->receive_scsi_back_thread, NULL, receive_scsi_back, scsi);
     // if(res)
     //     RAISE(PTHREAD_CREATE_ERROR);
@@ -2192,9 +2240,10 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
             if(!res) {
                 ret = FALSE;
                 DBG("write to %lx fails %s", destinationAddress, STRERROR(errno));
-            } else 
-                ret = FALSE;
-        }
+            } 
+            ++sendn;
+        } else 
+            ret = FALSE;
     } else {
         for(i = 0; i < scsi->valid_end_array_capacity; i++) {
             if(scsi->valid_end_array[i]) {
@@ -2208,13 +2257,13 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
             }
         }
     }
-    // if(sendn > 0) {
+    if(sendn > 0) {
         saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
         if(ret == TRUE) {
             scsi->sentPackets++;
             scsi->sentPacketsTotal++;
         }
-    // }
+    }
     return TRUE;
 }
 
@@ -2222,7 +2271,7 @@ ssize_t
 scsiSendEvent(Octet * buf, UInteger16 length, SCSIPath * scsi, 
 const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
 {
-    struct timespec ntime , ntime_;
+    struct timespec ntime;
     int i;
     Boolean ret = TRUE;
     int res = 0;
@@ -2245,6 +2294,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
                 ret = FALSE;
                 DBG("write to %lx fails %s", destinationAddress, STRERROR(errno));
             }
+            ++sendn;
         } else 
             ret = FALSE;
     } else {
@@ -2266,7 +2316,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
     //     printf("%ld,%ld\n", ntime_.tv_sec, ntime_.tv_nsec);
     //     abort();
     // }
-    // if(sendn > 0) {
+    if(sendn > 0) {
         if(res == -1) {
             res = errno;
             DBG("scsiSendEvent->clock_gettime: %s", STRERROR(res));
@@ -2279,7 +2329,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
             scsi->sentPackets++;
             scsi->sentPacketsTotal++;
         }
-    // }
+    }
     return TRUE;
 }
 
@@ -2308,9 +2358,10 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
             if(!res) {
                 ret = FALSE;
                 DBG("write to %lx fails %s", destinationAddress, STRERROR(errno));
-            } else 
+            } 
+            ++sendn;
+        } else 
              ret = FALSE;
-        }
     } else {
         for(i = 0; i < scsi->valid_end_array_capacity; i++) {
             if(scsi->valid_end_array[i]) {
@@ -2324,7 +2375,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
             }
         }
     }
-    // if(sendn > 0) {
+    if(sendn > 0) {
         if(res == -1) {
             res = errno;
             DBG("scsiSendEvent->clock_gettime: %s", STRERROR(res));
@@ -2337,7 +2388,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
             scsi->sentPackets++;
             scsi->sentPacketsTotal++;
         }
-    // }
+    }
     return TRUE;
 }
 
@@ -2360,9 +2411,10 @@ scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
             if(!res) {
                 ret = FALSE;
                 DBG("write to %lx fails %s", destinationAddress, STRERROR(errno));
-            }else 
+            }
+            ++sendn;
+        } else 
             ret = FALSE;
-        }
     }
     else {
         for(i = 0; i < scsi->valid_end_array_capacity; i++) {
@@ -2377,12 +2429,12 @@ scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
             }
         }
     }
-    // if(sendn > 0) {
+    if(sendn > 0) {
         saveMessageInReceiveList(scsi,buf,length,FALSE,scsi->info.wwn, ntime);
         if(ret == TRUE) {
             scsi->sentPackets++;
             scsi->sentPacketsTotal++;
         }
-    // }
+    }
     return TRUE;
 }
