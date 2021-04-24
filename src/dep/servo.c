@@ -562,7 +562,7 @@ DBG("UpdateOffset: max delay hit: %d\n", maxDelayHit);
 	/* Take care of correctionField */
 	subTime(&ptpClock->delayMS,
 		&ptpClock->delayMS, correctionField);
-
+	
 	/* update 'offsetFromMaster' */
 	if (ptpClock->delayMechanism == P2P) {
 		subTime(&ptpClock->offsetFromMaster, 

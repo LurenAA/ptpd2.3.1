@@ -680,6 +680,7 @@ void freeEndArray(SCSIEnd** array, int length, int capacity) {
                 }
                 free(end_ptr);
             }
+            array[i] = NULL;
         }
     } 
 }
