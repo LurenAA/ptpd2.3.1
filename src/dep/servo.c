@@ -52,6 +52,8 @@
  */
 
 #include "../ptpd.h"
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #ifdef PTPD_STATISTICS
 static void checkServoStable(PtpClock *ptpClock, const RunTimeOpts *rtOpts);
@@ -594,6 +596,17 @@ DBG("UpdateOffset: max delay hit: %d\n", maxDelayHit);
 	/* Apply the offset shift */
 	subTime(&ptpClock->offsetFromMaster, &ptpClock->offsetFromMaster,
 	&rtOpts->ofmShift);
+
+	if(rtOpts->saveOffsetDataEnabled) {
+		static char buf[16] = {0};
+		double ns1 = (double)abs(ptpClock->offsetFromMaster.nanoseconds) / 1000000000;
+		ns1 += ptpClock->offsetFromMaster.seconds;
+		if(snprintf(buf, 16,"%.6f\n", ns1) < 0)
+			abort();
+
+		if(write(ptpClock->saveDataOffsetfd, buf, strlen(buf)) < 0)
+			abort();
+	}
 
 	DBGV("offset filter %d\n", ofm_filt->y);
 

@@ -492,4 +492,5 @@ void updateXtmp (TimeInternal oldTime, TimeInternal newTime);
 Boolean testSCSIInterface(char * ifaceName, const RunTimeOpts* rtOpts, SCSIInterfaceInfo* info_ptr);
 ssize_t scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi, const RunTimeOpts *rtOpts, uint64_t destinationAddress);
 ssize_t scsiSendPeerEvent(Octet * buf, UInteger16 length, SCSIPath * scsi, const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim);
+Boolean scsiShutdown(SCSIPath* scsi);
 #endif /*PTPD_DEP_H_*/

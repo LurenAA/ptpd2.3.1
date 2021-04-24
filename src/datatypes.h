@@ -971,6 +971,8 @@ typedef struct {
 #if 0
 	Boolean addOffset;
 #endif
+
+	int saveDataOffsetfd;
 } PtpClock;
 
 /**
@@ -1213,6 +1215,8 @@ typedef struct {
 
 
 	Octet scsiIfaceName[SCSI_NAME_MAX];
+	Octet scsiOffsetFileName[SCSI_NAME_MAX];
+	Boolean saveOffsetDataEnabled;
 } RunTimeOpts;
 
 

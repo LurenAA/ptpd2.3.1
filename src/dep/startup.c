@@ -610,7 +610,13 @@ ptpdShutdown(PtpClock * ptpClock)
          */
 	toState(PTP_DISABLED, &rtOpts, ptpClock);
 
-	netShutdown(&ptpClock->netPath);
+	if(rtOpts.saveOffsetDataEnabled)
+		close(ptpClock->saveDataOffsetfd);
+	
+	if(rtOpts.transport == SCSI_FC)
+		scsiShutdown(&ptpClock->SCSIPath);
+	else 
+		netShutdown(&ptpClock->netPath);
 	free(ptpClock->foreign);
 
 	/* free management and signaling messages, they can have dynamic memory allocated */

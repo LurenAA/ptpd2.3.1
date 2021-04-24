@@ -1227,6 +1227,11 @@ parseConfig ( dictionary* dict, RunTimeOpts *rtOpts )
 	CONFIG_MAP_CHARARRAY("ptpengine:scsiinterface",rtOpts->scsiIfaceName,rtOpts->scsiIfaceName,
 	"Scsi interface to use -  /sys/class/fc_host/host5 etc. (required).");
 
+	CONFIG_MAP_CHARARRAY("ptpengine:scsi_offset_data",rtOpts->scsiOffsetFileName,"/home/xgb/py_ptp/fc_ptp_data",
+	"save Offset data");
+
+	CONFIG_KEY_TRIGGER("ptpengine:save_offset_data_enabled",rtOpts->saveOffsetDataEnabled,TRUE,FALSE);
+
 	CONFIG_MAP_CHARARRAY("ptpengine:interface",rtOpts->primaryIfaceName,rtOpts->primaryIfaceName,
 	"Network interface to use - eth0, igb0 etc. (required).");
 

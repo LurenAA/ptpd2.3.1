@@ -262,6 +262,17 @@ void addForeign(Octet*,MsgHeader*,PtpClock*, UInteger8);
 // 		sg_read = TRUE;
 // 	}
 // }
+static void openSaveOffsetFd(RunTimeOpts *rtOpts, PtpClock *ptpClock) {
+	assert(rtOpts);
+	assert(ptpClock);
+
+	if(rtOpts->saveOffsetDataEnabled) {
+		ptpClock->saveDataOffsetfd = open(rtOpts->scsiOffsetFileName, O_WRONLY | O_CREAT | O_APPEND, 00777);
+		if(ptpClock->saveDataOffsetfd == -1)
+			abort();
+	}
+}
+
 /* loop forever. doState() has a switch for the actions and events to be
    checked for 'port_state'. the actions and events may or may not change
    'port_state' by calling toState(), but once they are done we loop around
@@ -286,6 +297,7 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	if(rtOpts->statusLog.logEnabled)
 		writeStatusFile(ptpClock, rtOpts, TRUE);
 	// signal(SIGPOLL, srd);
+	openSaveOffsetFd(rtOpts, ptpClock);
 	for (;;)
 	{
 		/* 20110701: this main loop was rewritten to be more clear */
