@@ -1232,6 +1232,8 @@ parseConfig ( dictionary* dict, RunTimeOpts *rtOpts )
 
 	CONFIG_KEY_TRIGGER("ptpengine:save_offset_data_enabled",rtOpts->saveOffsetDataEnabled,TRUE,FALSE);
 
+	CONFIG_KEY_TRIGGER("ptpengine:direct_io_enabled",rtOpts->directIOEnabled,TRUE,FALSE);
+
 	CONFIG_MAP_CHARARRAY("ptpengine:interface",rtOpts->primaryIfaceName,rtOpts->primaryIfaceName,
 	"Network interface to use - eth0, igb0 etc. (required).");
 

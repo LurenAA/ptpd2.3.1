@@ -241,6 +241,16 @@ typedef struct SCSIEnd{
     char dev_str[]; // flexible array member
 } SCSIEnd;
 
+typedef struct dioDxferp {
+    unsigned char* buf;
+    int len;
+    Boolean hasInitMux;
+    
+    pthread_mutex_t mux; 
+    //save below
+    Boolean busy;
+} dioDxferp;
+
 typedef struct {
     //自己的属性
     SCSIInterfaceInfo info;
@@ -258,6 +268,11 @@ typedef struct {
     vdisk_tgt_dev** sess_array;
     int sess_array_capacity;
     int sess_array_length;
+
+    Boolean dioEnabled;
+    dioDxferp** dio_array;
+    int dio_array_length;
+    int dio_array_capacity;
     //别人的属性
     // uint64_t dictionary_keys[DICTIONARY_LEN]; //wwn
     // char* dictionary_values[DICTIONARY_LEN]; //dev

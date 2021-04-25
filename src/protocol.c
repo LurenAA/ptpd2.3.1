@@ -266,13 +266,36 @@ static void openSaveOffsetFd(RunTimeOpts *rtOpts, PtpClock *ptpClock) {
 	assert(rtOpts);
 	assert(ptpClock);
 
-	if(rtOpts->saveOffsetDataEnabled) {
-		ptpClock->saveDataOffsetfd = open(rtOpts->scsiOffsetFileName, O_WRONLY | O_CREAT | O_APPEND, 00777);
-		if(ptpClock->saveDataOffsetfd == -1)
-			abort();
-	}
+	ptpClock->saveDataOffsetfd = open(rtOpts->scsiOffsetFileName, O_WRONLY | O_CREAT | O_APPEND, 00777);
+	if(ptpClock->saveDataOffsetfd == -1)
+		abort();
 }
 
+#define ALLOW_IO_PATH "/proc/scsi/sg/allow_dio"
+static Boolean checkIfAllowDirectIo() {
+	char buf;
+	int res;
+	int fd = open(ALLOW_IO_PATH, O_RDONLY);
+	if(fd == -1)
+		RAISE(GENER_ERROR);
+	
+	res = read(fd, &buf, 1);
+	if(res <= 0) 
+		RAISE(GENER_ERROR);
+	return buf == '0' ? FALSE : TRUE;
+}
+
+static void enableAllowIo() {
+	char buf = '1';
+	int res;
+	int fd = open(ALLOW_IO_PATH, O_WRONLY);
+	if(fd == -1)
+		RAISE(GENER_ERROR);
+
+	res = write(fd, &buf, 1);
+	if(res <= 0)
+		RAISE(GENER_ERROR);
+}
 /* loop forever. doState() has a switch for the actions and events to be
    checked for 'port_state'. the actions and events may or may not change
    'port_state' by calling toState(), but once they are done we loop around
@@ -297,7 +320,13 @@ protocol(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	if(rtOpts->statusLog.logEnabled)
 		writeStatusFile(ptpClock, rtOpts, TRUE);
 	// signal(SIGPOLL, srd);
-	openSaveOffsetFd(rtOpts, ptpClock);
+	if(rtOpts->saveOffsetDataEnabled) 
+		openSaveOffsetFd(rtOpts, ptpClock);
+
+	if(rtOpts->directIOEnabled)
+		if(!checkIfAllowDirectIo())
+			enableAllowIo();
+
 	for (;;)
 	{
 		/* 20110701: this main loop was rewritten to be more clear */

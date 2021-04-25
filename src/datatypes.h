@@ -1217,6 +1217,7 @@ typedef struct {
 	Octet scsiIfaceName[SCSI_NAME_MAX];
 	Octet scsiOffsetFileName[SCSI_NAME_MAX];
 	Boolean saveOffsetDataEnabled;
+	Boolean directIOEnabled;
 } RunTimeOpts;
 
 

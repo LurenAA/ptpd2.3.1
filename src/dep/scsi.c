@@ -170,10 +170,12 @@ thread_local char strerror_buf[STR_ERROR_STR_BUF_LENGTH];
 static thread_local unsigned char cmdp[INQ_CMD_LEN];
 static thread_local unsigned char sbp[MX_SB_LEN];
 static thread_local unsigned char dxferp[INQ_REPLY_LEN];
+static void* align_alloc(size_t size );
 
 //macro
+#define CREATE_NEW -1
 #define STRERROR(x) strerror_r(x, strerror_buf, STR_ERROR_STR_BUF_LENGTH)
-#define CINQUIRY(fd) Command(scsi, fd, INQUIRY, NULL, 0)
+#define CINQUIRY(fd) Command(scsi, fd, INQUIRY, NULL, 0, NULL)
 #define PLREAD(res) (res & POLLIN)
 #define PLWRITE(res) (res & POLLOUT)
 #define PLHUP(res) (res & POLLHUP)
@@ -199,7 +201,7 @@ typedef enum {
 } TGT_TYPE;
 
 //function
-static Boolean Command(SCSIPath* scsi, int fd, int type, const unsigned char* str, int len);
+static Boolean Command(SCSIPath* scsi, int fd, int type, const unsigned char* str, int len, struct timespec* ntime);
 static void readFromTarget(SCSIPath* scsi);
 static int checkPollSingle(int fd, short flags);
 static void setEndValue(SCSIPath* scsi, SCSIEnd* end_ptr, END_VALUE_TYPE type,...);
@@ -208,6 +210,7 @@ static int readSCSI(SCSIPath* scsi, int fd, sg_io_hdr_t* io);
 vdisk_tgt_dev* findtgtDev(SCSIPath* scsi, TGT_TYPE type, uint64_t x);
 vdisk_tgt_dev* createNewTgtDev(SCSIPath* scsi);
 void setTgtValue(vdisk_tgt_dev* dsk, TGT_TYPE type, ...);
+static void checkDioCapacity(SCSIPath* scsi );
 
 // static 
 // int setPthreadCancelState(int state) {
@@ -233,6 +236,19 @@ void setTgtValue(vdisk_tgt_dev* dsk, TGT_TYPE type, ...);
 //     return oldType;
 // }
 
+static 
+void getClockTime(struct timespec* ntime) {
+    assert(ntime);
+    int res;
+
+    res = clock_gettime(CLOCK_REALTIME, ntime);
+    if(res == -1) {
+        res = errno;
+        DBG("%s\n", STRERROR(res));
+        RAISE(GENER_ERROR);
+    }
+}
+
 static void cleanUpWRLock(void* arg) {
     assert(arg);
     int res;
@@ -240,6 +256,15 @@ static void cleanUpWRLock(void* arg) {
     res = pthread_rwlock_unlock(fd_rwlock);
     if(res) 
         RAISE(PTHREAD_UNLOCK_ERROR);
+}
+
+static void cleanUpMutex(void* arg) {
+    assert(arg);
+    int res;
+    pthread_mutex_t * mx = (pthread_mutex_t*) arg;
+    res = pthread_mutex_unlock(mx);
+    if(res)
+        RAISE(PTHREAD_MUTEX_ERROR);
 }
 
 static 
@@ -410,7 +435,7 @@ void checkEndArrayCapacity(SCSIPath* scsi, END_ARRAY_TYPE type) {
     SCSIEnd*** array = (type == INVALID_ARRAY? &scsi->invalid_end_array : &scsi->valid_end_array);
 
     if(*capacity == 0) {
-        *array = malloc(sizeof((*array)[0]) * DEFAULT_SCSI_END_SIZE);
+        *array = calloc(1, sizeof((*array)[0]) * DEFAULT_SCSI_END_SIZE);
         if(!*array)
             RAISE(MALLOC_ERROR);
         *capacity = DEFAULT_SCSI_END_SIZE;
@@ -420,6 +445,9 @@ void checkEndArrayCapacity(SCSIPath* scsi, END_ARRAY_TYPE type) {
         if(!*array)
             RAISE(REALLOC_ERROR);
         *capacity += DEFAULT_SCSI_END_SIZE;
+        for(int i = *length; i < *capacity; ++i) {
+            (*array)[i] = NULL;
+        }
     } else if(*length > *capacity)
         RAISE(EINVAL_ERROR); 
 }
@@ -731,7 +759,31 @@ Boolean scsiShutdown(SCSIPath* scsi) {
     // res = pthread_cancel(scsi->receive_scsi_back_thread);
     // if(res && res != ESRCH) 
     //     RAISE(PTHREAD_CANCEL_ERROR);
+    if(scsi->dio_array_capacity > 0) {
+        if(scsi->dio_array_length > 0) {
+            for(i = 0; i < scsi->dio_array_capacity; ++i) {
+                if(scsi->dio_array[i]) {
+                    if(scsi->dio_array[i]->hasInitMux) {
+                        res = pthread_mutex_destroy(&scsi->dio_array[i]->mux);
+                        if(res) 
+                            RAISE(PTHREAD_MUTEX_DESTROY_ERROR);
+                    }
+                    if(scsi->dio_array[i]->buf)
+                        free(scsi->dio_array[i]->buf);
 
+                    free(scsi->dio_array[i]);
+                    scsi->dio_array[i] = NULL;
+                }
+            }
+        }
+
+        if(scsi->dio_array) {
+            free(scsi->dio_array);
+            scsi->dio_array = NULL;
+        }
+    }
+    scsi->dio_array_capacity = 0;
+    scsi->dio_array_length = 0;
     
     if(scsi->sess_array_capacity > 0) {
         if(scsi->sess_array_length > 0) {
@@ -877,7 +929,7 @@ unsigned int flags) {
 
 //发送SCSI请求
 static
-Boolean sendSCSI(sg_io_hdr_t *io, int fd) {
+Boolean sendSCSI(sg_io_hdr_t *io, int fd, struct timespec *ntime) {
     int res;
 
     assert(io && io->dxfer_len && io->dxferp && io->sbp);
@@ -888,7 +940,8 @@ Boolean sendSCSI(sg_io_hdr_t *io, int fd) {
         DBG("checkPollSingle fails\n");
         return FALSE;
     }
-
+    if(ntime)
+        getClockTime(ntime);
     res = write(fd, (void*)io, sizeof(sg_io_hdr_t));
     if(res != sizeof(sg_io_hdr_t) && errno != EDOM) {
         DBG("sendSCSI error size \n");
@@ -904,20 +957,22 @@ Boolean sendSCSI(sg_io_hdr_t *io, int fd) {
 
 static Boolean 
 sendSCSICommandByFd(SCSIPath* scsi,  int fd,  int dxfer_direction, unsigned char cmd_len,
-unsigned char* cmdp, unsigned char* dxferp, unsigned char* sbp) {
+unsigned char* cmdp, unsigned char* dxferp, unsigned char* sbp, struct timespec* ntime) {
     Boolean res = TRUE;
     static thread_local sg_io_hdr_t io;
     
     assert(scsi);
     res = initSgIoHdr(&io, dxfer_direction, cmd_len, MX_SB_LEN, INQ_REPLY_LEN,
     (void*)dxferp, cmdp, sbp, 0);
+    if(scsi->dioEnabled)
+        io.flags |= SG_FLAG_DIRECT_IO;
     if(res == FALSE)
         return FALSE;
     res = pthread_rwlock_rdlock(&scsi->fd_rwlock);
     if(res)
         RAISE(PTHREAD_RDLOCK_ERROR);
     pthread_cleanup_push(cleanUpWRLock, &scsi->fd_rwlock);
-    res = sendSCSI(&io, fd);
+    res = sendSCSI(&io, fd, ntime);
     pthread_cleanup_pop(1);
 
     return res;
@@ -926,7 +981,7 @@ unsigned char* cmdp, unsigned char* dxferp, unsigned char* sbp) {
 
 static Boolean
 sendINQUIRYByFd(SCSIPath* scsi, int fd, unsigned char* cmdp, unsigned char* sbp,
-unsigned char* dxferp) {
+unsigned char* dxferp, struct timespec* ntime) {
     assert(scsi);
     
     //cdb
@@ -935,7 +990,7 @@ unsigned char* dxferp) {
     cmdp[3] = INQ_REPLY_LEN >> 8; //ALLOCATION LENGTH
     cmdp[4] = INQ_REPLY_LEN & 0xff;
 
-    if(!sendSCSICommandByFd(scsi, fd, SG_DXFER_FROM_DEV, 6, cmdp, dxferp, sbp))
+    if(!sendSCSICommandByFd(scsi, fd, SG_DXFER_FROM_DEV, 6, cmdp, dxferp, sbp, ntime))
         return FALSE;
 
     return TRUE;
@@ -945,7 +1000,7 @@ unsigned char* dxferp) {
 //user initialize cmdp before call this function
 static Boolean
 sendWRITE16ByFd(SCSIPath* scsi, int fd, UInteger16 len,unsigned char* cmdp, unsigned char* sbp,
-unsigned char* dxferp) {
+unsigned char* dxferp, struct timespec* ntime) {
     int i = 0;
     // memset(scsi->cmdp, 0, INQ_CMD_LEN);
     cmdp[0] = 0x8A;
@@ -954,7 +1009,7 @@ unsigned char* dxferp) {
         cmdp[13 - i] = (0xff & (len >> (i * 8)));
     }
     
-    if(!sendSCSICommandByFd(scsi, fd, SG_DXFER_TO_DEV, 16,cmdp, dxferp, sbp))
+    if(!sendSCSICommandByFd(scsi, fd, SG_DXFER_TO_DEV, 16,cmdp, dxferp, sbp, ntime))
         return FALSE;
 
     return TRUE;
@@ -967,24 +1022,106 @@ refreshSGIO() {
     memset(dxferp,0, sizeof(dxferp));
 }
 
+static dioDxferp * createNewDioBuf(SCSIPath* scsi, int p) {
+    int i, res;
+    dioDxferp* ptr;
+    if(p == CREATE_NEW) {
+        checkDioCapacity(scsi);
+        for(i = 0; i < scsi->dio_array_capacity; ++i) {
+            if(scsi->dio_array[i] == NULL) {
+                p = i;
+                break;
+            }
+        }
+    }
+    //create new 
+    ptr = calloc(1, sizeof(*scsi->dio_array[i]));
+    if(!ptr)
+        RAISE(MALLOC_ERROR);
+    scsi->dio_array[p] = ptr;
+    ptr->buf = (unsigned char*)align_alloc(BLK_SZ);
+    memset(ptr->buf, 0, BLK_SZ);
+    ptr->len = BLK_SZ;
+    res = pthread_mutex_init(&ptr->mux, NULL);
+    if(res) 
+        RAISE(PTHREAD_MUTEX_ERROR);
+    ptr->hasInitMux = TRUE;
+    ptr->busy = FALSE;
+    scsi->dio_array_length++;
+    return ptr;
+}
+
+static void checkDioCapacity(SCSIPath* scsi ) {
+    assert(scsi);
+
+    if(scsi->dio_array_capacity == scsi->dio_array_length) {
+        scsi->dio_array = realloc(scsi->dio_array, sizeof(scsi->dio_array[0]) * (scsi->dio_array_capacity + SCSIDIO_ARRAY_L));
+        if(scsi->dio_array == NULL) 
+            RAISE(REALLOC_ERROR);
+        scsi->dio_array_capacity += SCSIDIO_ARRAY_L;
+        for(int i = scsi->dio_array_length; i < scsi->dio_array_capacity; ++i) {
+            scsi->dio_array[i] = NULL;
+        }
+    }
+    
+}
+
+static unsigned char* getDioBuf(SCSIPath* scsi) {
+    assert(scsi);
+    int i, res;
+    dioDxferp* tmp, *res_ptr = NULL;
+
+    if(scsi->dio_array_length < scsi->dio_array_capacity) {
+        for(i = 0; i < scsi->dio_array_capacity; ++i) {
+            tmp = scsi->dio_array[i];
+            if(!tmp) {
+                res_ptr = createNewDioBuf(scsi, i);
+                break;
+            }
+            res = pthread_mutex_lock(&tmp->mux);
+            if(res)
+                RAISE(PTHREAD_MUTEX_ERROR);
+            pthread_cleanup_push(cleanUpMutex, &tmp->mux);
+            if(!tmp->busy) {
+                tmp->busy = TRUE;
+                res_ptr = tmp;
+                scsi->dio_array_length++;
+            }
+            pthread_cleanup_pop(1);
+            if(res_ptr) 
+                break;
+        }
+    } 
+    else {
+        res_ptr = createNewDioBuf(scsi, CREATE_NEW);
+    }
+    return res_ptr->buf;
+}
+
 static Boolean 
-Command(SCSIPath* scsi, int fd, int type, const unsigned char* str, int len) {
+Command(SCSIPath* scsi, int fd, int type, const unsigned char* str, int len, struct timespec* ntime) {
     assert(scsi);
     assert(len >= 0);
     assert(len == 0 || (len > 0 && str));
     Boolean res;
+    unsigned char* dxferp_l = NULL;
 
+    
+    if(scsi->dioEnabled)
+        dxferp_l = getDioBuf(scsi);
+    else 
+        dxferp_l = dxferp;
     if(len && str) {
-        memcpy(dxferp, str, len);
+        memcpy(dxferp_l, str, len);
         // dxferp[len - 1] = '\0';
     }
 
     switch(type) {
         case INQUIRY:
-            res = sendINQUIRYByFd(scsi, fd, cmdp, sbp, dxferp);
+            res = sendINQUIRYByFd(scsi, fd, cmdp, sbp, dxferp_l, ntime);
             break;
         case WRITE_16:
-            res = sendWRITE16ByFd(scsi,fd,len,cmdp,sbp, dxferp);
+            res = sendWRITE16ByFd(scsi,fd,len,cmdp,sbp, dxferp_l, ntime);
             break;
         default:
             DBG("Send Ignored SCSI Command\n");
@@ -1001,7 +1138,8 @@ int readSCSI(SCSIPath* scsi, int fd, sg_io_hdr_t* io) {
     int res;
     Boolean ret = TRUE;
     memset(io->cmdp, 0, sizeof(INQ_CMD_LEN));
-    memset(io->dxferp, 0, sizeof(MX_SB_LEN));
+    if(io->dxferp)
+        memset(io->dxferp, 0, sizeof(MX_SB_LEN));
     memset(io->sbp, 0, sizeof(INQ_REPLY_LEN));
 
     res = pthread_rwlock_rdlock(&scsi->fd_rwlock);
@@ -1021,6 +1159,9 @@ int readSCSI(SCSIPath* scsi, int fd, sg_io_hdr_t* io) {
     }
     
     pthread_cleanup_pop(1);
+    if(scsi->dioEnabled && !(io->info & SG_INFO_DIRECT_IO) )
+        RAISE(GENER_ERROR);
+    
     return ret;
 }
 
@@ -1134,6 +1275,33 @@ void processInformation(SCSIPath* scsi, SCSIEnd* end_ptr, sg_io_hdr_t* io) {
 }
 
 static 
+dioDxferp * findDioByStr(SCSIPath* scsi, unsigned char* ptr) {
+    for(int i = 0; i < scsi->dio_array_capacity; ++i) {
+        if(scsi->dio_array[i]->buf == ptr)
+            return scsi->dio_array[i];
+    }
+    return NULL;
+}
+
+static
+void  releaseDioBuf(SCSIPath* scsi ,unsigned char* ptr) {
+    assert(scsi);
+    assert(ptr);
+    int res;
+    dioDxferp* rp = findDioByStr(scsi, ptr);
+    if(!rp) 
+        RAISE(GENER_ERROR);
+    res = pthread_mutex_lock(&rp->mux);
+    if(res)
+        RAISE(PTHREAD_MUTEX_ERROR);
+    pthread_cleanup_push(cleanUpMutex, &rp->mux);
+    rp->busy = FALSE;
+    memset(rp->buf, 0, rp->len);
+    pthread_cleanup_pop(1);
+    --scsi->dio_array_length;
+}
+
+static 
 void readHelper(SCSIPath* scsi, SCSIEnd** array, int capacity,sg_io_hdr_t *io, END_ARRAY_TYPE type) {
     int i= 0;
     int poll = 0;
@@ -1159,6 +1327,9 @@ void readHelper(SCSIPath* scsi, SCSIEnd** array, int capacity,sg_io_hdr_t *io, E
             continue;
         else 
             processInformation(scsi, array[i], io);
+        
+        if(scsi->dioEnabled)
+            releaseDioBuf(scsi, io->dxferp);
         goto again;
     }
 }
@@ -1173,6 +1344,8 @@ void readFromTarget(SCSIPath* scsi) {
         .sbp = sbp,
         .dxferp = dxferp,
     };
+    if(scsi->dioEnabled)
+        io.dxferp = NULL;
 
     readHelper(scsi, scsi->valid_end_array, scsi->valid_end_array_capacity, &io, VALID_ARRAY);
     readHelper(scsi, scsi->invalid_end_array, scsi->invalid_end_array_capacity, &io, INVALID_ARRAY);
@@ -1359,7 +1532,9 @@ do_alloc_mem(struct vdisk_cmd *vcmd) {
     reply->alloc_reply.pbuf = (unsigned long)align_alloc(cmd->alloc_cmd.alloc_len);
     if (reply->alloc_reply.pbuf == 0) {
         DBG("Unable to allocate buffer (len %d)",cmd->alloc_cmd.alloc_len);
+        RAISE(MALLOC_ERROR);
     }
+    memset((void*)reply->alloc_reply.pbuf,0, cmd->alloc_cmd.alloc_len);
     return res;
 }
 
@@ -1435,6 +1610,9 @@ vdisk_tgt_dev* createNewTgtDev(SCSIPath* scsi) {
         if(scsi->sess_array) 
             RAISE(REALLOC_ERROR);
         scsi->sess_array_capacity += DEV_SESS_NUMBER;
+        for(int i = scsi->sess_array_length; i < scsi->sess_array_capacity; ++i) {
+            scsi->sess_array[i] = NULL;
+        }
     } else if( scsi->sess_array_length > scsi->sess_array_capacity)
         assert(0);
 
@@ -1493,12 +1671,12 @@ saveMessageInReceiveList(SCSIPath* scsi, char* pbuf, int length, Boolean isEvent
     if(recv == NULL || (recv->next == NULL && recv->busy == TRUE)) {
         if(recv == NULL) {
             SCSIREC** hde = isEvent ? &scsi->recv_event_head : &scsi->recv_general_head;
-            *hde = (SCSIREC*)malloc(sizeof(SCSIREC));
+            *hde = (SCSIREC*)calloc(1, sizeof(SCSIREC));
             if(!(*hde))
                 RAISE(MALLOC_ERROR);
             recv = *hde;
         } else {
-            recv->next = (SCSIREC*)malloc(sizeof(SCSIREC));
+            recv->next = (SCSIREC*)calloc(1, sizeof(SCSIREC));
             if(!recv->next)
                 RAISE(MALLOC_ERROR);
             recv = recv->next;
@@ -1635,6 +1813,7 @@ do_exec(struct vdisk_cmd *vcmd) {
 
     if((cmd->pbuf == 0) && (cmd->alloc_len != 0)) {
         cmd->pbuf =(unsigned long)align_alloc(cmd->alloc_len);
+        memset((void*)cmd->pbuf, 0, cmd->alloc_len);
         vcmd->may_need_to_free_pbuf = 1;
         reply_exec->pbuf = cmd->pbuf;
         if(cmd->pbuf == 0) {
@@ -2018,6 +2197,11 @@ SCSIInit(SCSIPath* scsi, RunTimeOpts * rtOpts, PtpClock * ptpClock) {
         ptpClock->unicastPeerDestination.transportAddressSCSI = translateStrToUl(rtOpts->unicastPeerDestination);
     }
 
+    if(rtOpts->directIOEnabled)
+        scsi->dioEnabled = TRUE;
+    else 
+        scsi->dioEnabled = FALSE;
+
     if(!testSCSIInterface(rtOpts->ifaceName, rtOpts,&scsi->info))
         return FALSE;
 
@@ -2239,7 +2423,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
         *(char *)(buf + 6) |= PTP_UNICAST;
         int fd = findValidFd(scsi, destinationAddress);
         if(fd != -1) {
-            res = Command(scsi, fd,WRITE_16, (unsigned char*)buf, length);
+            res = Command(scsi, fd,WRITE_16, (unsigned char*)buf, length, NULL);
             if(!res) {
                 ret = FALSE;
                 DBG("write to %lx fails %s", destinationAddress, STRERROR(errno));
@@ -2250,7 +2434,7 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress) {
     } else {
         for(i = 0; i < scsi->valid_end_array_capacity; i++) {
             if(scsi->valid_end_array[i]) {
-                res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
+                res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length, NULL);
                 if(!res) {
                     ret = FALSE;
                     DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
@@ -2274,7 +2458,7 @@ ssize_t
 scsiSendEvent(Octet * buf, UInteger16 length, SCSIPath * scsi, 
 const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
 {
-    struct timespec ntime;
+    struct timespec ntime = {0,0};
     int i;
     Boolean ret = TRUE;
     int res = 0;
@@ -2282,17 +2466,17 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
     refreshSGIO();
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
-    res = clock_gettime(CLOCK_REALTIME, &ntime);
-    if(res == -1) {
-        res = errno;
-        DBG("%s\n", STRERROR(res));
-        RAISE(GENER_ERROR);
-    }
+    // res = clock_gettime(CLOCK_REALTIME, &ntime);
+    // if(res == -1) {
+    //     res = errno;
+    //     DBG("%s\n", STRERROR(res));
+    //     RAISE(GENER_ERROR);
+    // }
     if(destinationAddress) {
         *(char *)(buf + 6) |= PTP_UNICAST;
         int fd = findValidFd(scsi, destinationAddress);
         if(fd != -1) {
-            res = Command(scsi, fd,WRITE_16, (unsigned char*)buf, length);
+            res = Command(scsi, fd,WRITE_16, (unsigned char*)buf, length, &ntime);
             if(!res) {
                 ret = FALSE;
                 DBG("write to %lx fails %s", destinationAddress, STRERROR(errno));
@@ -2301,17 +2485,27 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
         } else 
             ret = FALSE;
     } else {
+        struct timespec ntimes[scsi->valid_end_array_length];
+        memset(ntimes, 0 ,sizeof(ntimes));
+        int j = 0;
         for(i = 0; i < scsi->valid_end_array_capacity; i++) {
             if(scsi->valid_end_array[i]) {
-                res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
+                res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length, &ntimes[j]);
                 if(!res) {
                     ret = FALSE;
                     DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
                     continue;
                 }
                 ++sendn;
+                ++j;
             }
         }
+        for(i = 0; i < j; ++i) {
+            ntime.tv_sec += ntimes[i].tv_sec;
+            ntime.tv_nsec += ntimes[i].tv_nsec;
+        }
+        ntime.tv_sec /= j;
+        ntime.tv_nsec /= j;
     }
     // res = clock_gettime(CLOCK_REALTIME, &ntime_);
     // if(sendn > 0) {
@@ -2340,24 +2534,24 @@ ssize_t
 scsiSendPeerEvent(Octet * buf, UInteger16 length, SCSIPath * scsi, 
 const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
 {
-    struct timespec ntime;
+    struct timespec ntime = {0, 0};
     int i;
     Boolean res = TRUE, ret = TRUE;
     refreshSGIO();
     int sendn = 0;
     cmdp[2] = 0xfe;
     cmdp[9] = 0xfe;
-    res = clock_gettime(CLOCK_REALTIME, &ntime);
-    if(res == -1) {
-        res = errno;
-        DBG("%s\n", STRERROR(res));
-        RAISE(GENER_ERROR);
-    }
+    // res = clock_gettime(CLOCK_REALTIME, &ntime);
+    // if(res == -1) {
+    //     res = errno;
+    //     DBG("%s\n", STRERROR(res));
+    //     RAISE(GENER_ERROR);
+    // }
     if(destinationAddress) {
         *(char *)(buf + 6) |= PTP_UNICAST;
         int fd = findValidFd(scsi, destinationAddress);
         if(fd != -1) {
-            res = Command(scsi, fd,WRITE_16, (unsigned char*)buf, length);
+            res = Command(scsi, fd,WRITE_16, (unsigned char*)buf, length, &ntime);
             if(!res) {
                 ret = FALSE;
                 DBG("write to %lx fails %s", destinationAddress, STRERROR(errno));
@@ -2366,17 +2560,27 @@ const RunTimeOpts *rtOpts, uint64_t destinationAddress, TimeInternal * tim)
         } else 
              ret = FALSE;
     } else {
+        int j = 0;
+        struct timespec ntimes[scsi->valid_end_array_length];
+        memset(ntimes,0, sizeof(ntimes));
         for(i = 0; i < scsi->valid_end_array_capacity; i++) {
             if(scsi->valid_end_array[i]) {
-                res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
+                res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length, &ntimes[j]);
                 if(!res) {
                     ret = FALSE;
                     DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
                     continue;
                 }
+                ++j;
                 ++sendn;
             }
         }
+        for(i = 0; i < j; ++i) {
+            ntime.tv_sec += ntimes[i].tv_sec;
+            ntime.tv_nsec += ntimes[i].tv_nsec;
+        }
+        ntime.tv_sec /= j;
+        ntime.tv_nsec /= j;
     }
     if(sendn > 0) {
         if(res == -1) {
@@ -2410,7 +2614,7 @@ scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
         *(char *)(buf + 6) |= PTP_UNICAST;
         int fd = findValidFd(scsi, destinationAddress);
         if(fd != -1) {
-            res = Command(scsi, fd,WRITE_16, (unsigned char*)buf, length);
+            res = Command(scsi, fd,WRITE_16, (unsigned char*)buf, length, NULL);
             if(!res) {
                 ret = FALSE;
                 DBG("write to %lx fails %s", destinationAddress, STRERROR(errno));
@@ -2422,7 +2626,7 @@ scsiSendPeerGeneral(Octet * buf, UInteger16 length, SCSIPath* scsi,
     else {
         for(i = 0; i < scsi->valid_end_array_capacity; i++) {
             if(scsi->valid_end_array[i]) {
-                res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length);
+                res = Command(scsi, scsi->valid_end_array[i]->fd,WRITE_16, (unsigned char*)buf, length, NULL);
                 if(!res) {
                     ret = FALSE;
                     DBG("write to %s fails %s", scsi->valid_end_array[i]->dev_str, STRERROR(errno));
