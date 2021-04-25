@@ -211,6 +211,7 @@ typedef struct {
 typedef struct  
 {
     uint64_t wwn;
+    char wwn_str[HEX + 1];
     Boolean online;
 }SCSIInterfaceInfo;
 

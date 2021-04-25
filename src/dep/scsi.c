@@ -613,6 +613,8 @@ Boolean getSCSIInterfaceInfo(const char* ifaceName, SCSIInterfaceInfo* info) {
     info->wwn = strtoul(&wwn[0], &endptr, HEX);
     if(info->wwn == ULONG_MAX || endptr == &wwn[0]) 
         RAISE(STRTOUL_ERROR);
+    strcpy(&info->wwn_str[0], &wwn[2]);
+    
 
     if(-1 == close(fd))
         RAISE(CLOSE_ERROR);

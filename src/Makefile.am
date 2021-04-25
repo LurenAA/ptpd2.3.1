@@ -54,6 +54,10 @@ ptpd2_SOURCES =				\
 	dep/startup.c			\
 	dep/sys.c			\
 	dep/scsi.c          \
+	dep/fnv.h              \
+	dep/fnv.c            \
+	dep/crc16.h    \
+	dep/crc16.c   \
 	dep/exception.h\
 	dep/exception.c\
 	display.c			\

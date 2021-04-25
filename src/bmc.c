@@ -53,7 +53,8 @@
  */
 
 #include "ptpd.h"
-
+#include "dep/crc16.h"
+#include "dep/fnv.h"
 
 /* Init ptpClock with run time values (initialization constants are in constants.h)*/
 void initData(RunTimeOpts *rtOpts, PtpClock *ptpClock)
@@ -83,9 +84,13 @@ void initData(RunTimeOpts *rtOpts, PtpClock *ptpClock)
 	} else if (rtOpts->transport == SCSI_FC) {
 		ptpClock->clockIdentity[0] = 0xFF;
 		ptpClock->clockIdentity[1] = 0x04; //scsi
-		for(i = 2; i < CLOCK_IDENTITY_LENGTH; ++i) {
-				ptpClock->clockIdentity[i]= ((ptpClock->SCSIPath.info.wwn >> (8 * j))& (0xFF));
-				++j;
+		const char* wwn_str = ptpClock->SCSIPath.info.wwn_str;
+		uint16_t crcr = crc16(wwn_str, strlen(wwn_str));
+		ptpClock->clockIdentity[2] = 0xff & crcr;
+		ptpClock->clockIdentity[3] = 0xff & (crcr >> 8);
+		uint32_t fnvr = fnv_32_buf(wwn_str, strlen(wwn_str), FNV1_32_INIT);
+		for(i = 4; i < CLOCK_IDENTITY_LENGTH; ++i) {
+				ptpClock->clockIdentity[i]= (fnvr >> (8 * (i - 4)))& 0xFF;
 		}
 	}
 
